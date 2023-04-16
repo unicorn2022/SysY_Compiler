@@ -140,7 +140,7 @@ void PrintRemaining() {
 		sum_credit += a[i].credit;
 	}
 	credit_remaining = sum_credit;
-	printf("Hours Remaining: %d\n", sum_credit);
+	printf("Credits Remaining: %d\n", sum_credit);
 }
 
 // 判断第index个课程是否需要修读
@@ -165,9 +165,9 @@ bool NeedToLearn(int index) {
 }
 
 int main() {
-	freopen("./input/task3.2.in", "r", stdin);
+	//freopen("./input/task3.1.in", "r", stdin);
 	char line[1000];
-	while (gets_s(line)) {
+	while (scanf("%s", line) != EOF) {
 		Prework(line);
 	}
 	PrintGPA();
@@ -178,11 +178,11 @@ int main() {
 	for (int i = 1; i <= course_input[0]; i++) {
 		int index = course_input[i];
 		if (NeedToLearn(index)) {
-			printf("    %s\n", course[index]);
+			printf("  %s\n", course[index]);
 		}
 	}
 	if (credit_remaining == 0) {
-		printf("\tNone - Congratulations!\n");
+		printf("  None - Congratulations!\n");
 	}
 	return 0;
 }
