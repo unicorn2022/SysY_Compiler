@@ -134,28 +134,24 @@ UnaryExp
         auto ast = new UnaryExpAST();
         ast->kind = 1;
         ast->primaryExp = unique_ptr<BaseAST>($1);
-        ast->GetNumber();
         $$ = ast;
     }
     | '+' UnaryExp{
         auto ast = new UnaryExpAST();
         ast->kind = 2;
         ast->unaryExp = unique_ptr<BaseAST>($2);
-        ast->GetNumber();
         $$ = ast;
     }
     | '-' UnaryExp{
         auto ast = new UnaryExpAST();
         ast->kind = 3;
         ast->unaryExp = unique_ptr<BaseAST>($2);
-        ast->GetNumber();
         $$ = ast;
     }
     | '!' UnaryExp{
         auto ast = new UnaryExpAST();
         ast->kind = 4;
         ast->unaryExp = unique_ptr<BaseAST>($2);
-        ast->GetNumber();
         $$ = ast;
     }
     ;

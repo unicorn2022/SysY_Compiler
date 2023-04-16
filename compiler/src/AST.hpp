@@ -4,9 +4,6 @@
 class BaseAST {
 public:
     virtual ~BaseAST() = default;
-    virtual int GetNumber(){
-        return 0;
-    }
     virtual std::string PrintAST(std::string tab) const = 0;
     virtual std::string PrintIR(std::string tab) const = 0;
 };
@@ -149,10 +146,6 @@ public:
     std::unique_ptr<BaseAST> exp;
     int number;
 
-    int GetNumber() override{
-        return number;
-    }
-
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "PrimaryExpAST {\n";
@@ -178,17 +171,6 @@ public:
     int kind;
     std::unique_ptr<BaseAST> primaryExp;
     std::unique_ptr<BaseAST> unaryExp;
-    int number;
-
-    int GetNumber() override{
-        if(kind == 1){
-            number = primaryExp->GetNumber();
-        }else {
-            number = unaryExp->GetNumber();
-        }
-
-        return number;
-    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -208,6 +190,6 @@ public:
 
     std::string PrintIR(std::string tab) const override{
         if(kind == 1) return tab + primaryExp->PrintIR(tab + '\t');
-        else return tab + std::to_string(number);
+        else return tab + unaryExp->PrintIR(tab + '\t');
     }
 };
