@@ -165,7 +165,7 @@ bool NeedToLearn(int index) {
 }
 
 int main() {
-	//freopen("./input/task3.1.in", "r", stdin);
+	freopen("./input/task3.1.in", "r", stdin);
 	char line[1000];
 	while (scanf("%s", line) != EOF) {
 		Prework(line);
