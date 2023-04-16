@@ -4,8 +4,8 @@
 class BaseAST {
 public:
     virtual ~BaseAST() = default;
-    virtual void PrintAST(std::string tab) const = 0;
-    virtual void PrintIR(std::string tab) const = 0;
+    virtual std::string PrintAST(std::string tab) const = 0;
+    virtual std::string PrintIR(std::string tab) const = 0;
 };
 
 // CompUnit 是 BaseAST
@@ -14,14 +14,16 @@ public:
     // 用智能指针管理对象
     std::unique_ptr<BaseAST> func_def;
 
-    void PrintAST(std::string tab) const override {
-        std::cout << "CompUnitAST {\n";
-        std::cout << tab << "\tfunc_def: "; func_def->PrintAST(tab + "\t");
-        std::cout << tab << "}\n";
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "CompUnitAST {\n";
+        ans += tab + "\tfunc_def: " + func_def->PrintAST(tab + "\t");
+        ans += tab + "}\n";
+        return ans;
     }
 
-    void PrintIR(std::string tab) const override{
-        func_def->PrintIR(tab);
+    std::string PrintIR(std::string tab) const override{
+        return func_def->PrintIR(tab);
     }
 };
 
@@ -32,25 +34,29 @@ public:
     std::string ident;
     std::unique_ptr<BaseAST> block;
 
-    void PrintAST(std::string tab) const override {
-        std::cout << "FuncDefAST {\n";
-        std::cout << tab << "\tfunc_type: "; func_type->PrintAST(tab + "\t");
-        std::cout << tab << "\tident: " << ident << "\n";
-        std::cout << tab << "\tblock: "; block->PrintAST(tab + "\t");
-        std::cout << tab << "}\n";
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "FuncDefAST {\n";
+        ans += tab + "\tfunc_type: " + func_type->PrintAST(tab + "\t");
+        ans += tab + "\tident: " + ident + "\n";
+        ans += tab + "\tblock: " + block->PrintAST(tab + "\t");
+        ans += tab + "}\n";
+        return ans;
     }
 
-    void PrintIR(std::string tab) const override{
+    std::string PrintIR(std::string tab) const override{
+        std::string ans = "";
         // 函数的定义
-        std::cout << tab << "fun @" << ident << "():";
-        func_type->PrintIR(tab);
-        std::cout << tab << "{\n";
+        ans += tab + "fun @" + ident + "():";
+        ans += func_type->PrintIR(tab);
+        ans += tab + "{\n";
 
         // 函数的代码块
-        block->PrintIR(tab);
+        ans += block->PrintIR(tab);
 
         // 函数结尾
-        std::cout << tab << "}\n";
+        ans += tab + "}\n";
+        return ans;
     }
 };
 
@@ -59,17 +65,19 @@ class FuncTypeAST : public BaseAST {
 public:
     std::string type;
 
-    void PrintAST(std::string tab) const override {
-        std::cout << "FuncTypeAST {\n";
-        std::cout << tab << "\ttype: " << type << "\n";
-        std::cout << tab << "}\n";
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "FuncTypeAST {\n";
+        ans += tab + "\ttype: " + type + "\n";
+        ans += tab + "}\n";
+        return ans;
     }
 
-    void PrintIR(std::string tab) const override{
+    std::string PrintIR(std::string tab) const override{
         if(type == "int") {
-            std::cout << tab << " i32 ";
+            return tab + " i32 ";
         } else{
-            std::cout << tab << " error-type ";
+            return tab + " error-type ";
         }
     }
 };
@@ -79,15 +87,19 @@ class BlockAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> stmt;
 
-    void PrintAST(std::string tab) const override {
-        std::cout << "BlockAST {\n";
-        std::cout << tab << "\tstmt: "; stmt->PrintAST(tab + "\t");
-        std::cout << tab << "}\n";
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "BlockAST {\n";
+        ans += tab + "\tstmt: " + stmt->PrintAST(tab + "\t");
+        ans += tab + "}\n";
+        return ans;
     }
 
-    void PrintIR(std::string tab) const override{
-        std::cout << tab << "\%entry:\n";
-        stmt->PrintIR(tab + "\t");
+    std::string PrintIR(std::string tab) const override{
+        std::string ans = "";
+        ans += tab + "\%entry:\n";
+        ans += stmt->PrintIR(tab + "\t");
+        return ans;
     }
 };
 
@@ -96,13 +108,15 @@ class StmtAST : public BaseAST {
 public:
     int number;
 
-    void PrintAST(std::string tab) const override {
-        std::cout << "StmtAST {\n";
-        std::cout << tab << "\tnumber: " << number << "\n";
-        std::cout << tab << "}\n";
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "StmtAST {\n";
+        ans += tab + "\tnumber: " + std::to_string(number) + "\n";
+        ans += tab + "}\n";
+        return ans;
     }
 
-    void PrintIR(std::string tab) const override{
-        std::cout << tab << "ret " << number << "\n";
+    std::string PrintIR(std::string tab) const override{
+        return tab + "ret " + std::to_string(number) + "\n";
     }
 };

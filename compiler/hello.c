@@ -1,4 +1,3 @@
 int main() {
-  // 摊牌了, 我是注释
-  return 0;
+    return 1 + 2 * -3;
 }

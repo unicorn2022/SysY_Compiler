@@ -12,7 +12,13 @@ make
 
 ### 2	自动测试
 
+#### 2.1	第1章
+
 ```bash
 autotest -koopa -s lv1 /root/SysY_Compiler/compiler/
 ```
 
+#### 2.2	第2章
+
+```bash
+autotest -riscv -s lv1 /root/SysY_Compiler/compiler/
