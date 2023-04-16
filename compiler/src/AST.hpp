@@ -5,10 +5,12 @@ class BaseAST {
 public:
     virtual ~BaseAST() = default;
     virtual std::string PrintAST(std::string tab) const = 0;
-    virtual std::string PrintIR(std::string tab) const = 0;
+    // 输出到buffer中, 返回值为需要的信息
+    virtual std::string PrintIR(std::string tab, std::string &buffer) const = 0;
 };
 
-// CompUnit 是 BaseAST
+// CompUnit: 起始字符, 表示整个文件
+// CompUnit ::= FuncDef
 class CompUnitAST : public BaseAST {
 public:
     // 用智能指针管理对象
@@ -22,12 +24,20 @@ public:
         return ans;
     }
 
-    std::string PrintIR(std::string tab) const override{
-        return func_def->PrintIR(tab);
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        func_def->PrintIR(tab, buffer);
+        return "";
     }
 };
 
-// FuncDef 也是 BaseAST
+// FuncDef: 函数定义
+// FuncDef ::= FuncType IDENT '(' ')' Block;
+/**
+*   翻译为: 
+*   fun @IDENT (): [FuncType]{ 
+*       [Block]
+*   }
+*/
 class FuncDefAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> func_type;
@@ -44,23 +54,26 @@ public:
         return ans;
     }
 
-    std::string PrintIR(std::string tab) const override{
-        std::string ans = "";
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
         // 函数的定义
-        ans += tab + "fun @" + ident + "():";
-        ans += func_type->PrintIR(tab);
-        ans += tab + "{\n";
+        buffer += tab + "fun @" + ident + "():";
+        func_type->PrintIR(tab, buffer);
+        buffer += tab + "{\n";
 
         // 函数的代码块
-        ans += block->PrintIR(tab);
+        block->PrintIR(tab, buffer);
 
         // 函数结尾
-        ans += tab + "}\n";
-        return ans;
+        buffer += tab + "}\n";
+        return "";
     }
 };
 
-// FuncType 也是 BaseAST
+// FuncType: 函数返回值类型(int)
+// FuncType ::= INT
+/**
+* 翻译为: i32
+*/
 class FuncTypeAST : public BaseAST {
 public:
     std::string type;
@@ -73,16 +86,23 @@ public:
         return ans;
     }
 
-    std::string PrintIR(std::string tab) const override{
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
         if(type == "int") {
-            return tab + " i32 ";
+            buffer += tab + " i32 ";
         } else{
-            return tab + " error-type ";
+            buffer += tab + " error-type ";
         }
+        return "";
     }
 };
 
-// Block 也是 BaseAST
+// Block: 函数的结构体
+// Block :== '{' Stmt '}'
+/**
+*   翻译为: 
+*   %entry:
+*       [Stmt]
+*/
 class BlockAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> stmt;
@@ -95,15 +115,21 @@ public:
         return ans;
     }
 
-    std::string PrintIR(std::string tab) const override{
-        std::string ans = "";
-        ans += tab + "\%entry:\n";
-        ans += stmt->PrintIR(tab + "\t");
-        return ans;
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        buffer += tab + "\%entry:\n";
+        stmt->PrintIR(tab + "\t", buffer);
+        return "";
     }
 };
 
-// Stmt 也是 BaseAST
+// Stmt: 一条 SysY 语句
+// Stmt ::= 'return' Exp ';';
+// 翻译为: ret var, var是Exp对应的变量
+/**
+*   翻译为: 
+*   var = [Exp]
+*   ret var
+*/
 class StmtAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> exp;
@@ -116,12 +142,20 @@ public:
         return ans;
     }
 
-    std::string PrintIR(std::string tab) const override{
-        return tab + "ret " + exp->PrintIR(tab + "\t");
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        // 根据后面计算出来的变量名称
+        std::string var = exp->PrintIR(tab, buffer);
+        buffer += tab + "ret " + var + "\n";
+        return "";
     }
 };
 
-// Exp 也是 BaseAST
+// Exp: 一个 SysY 表达式
+// Exp ::= UnaryExp;
+/**
+*   翻译为: 
+*   return [unaryExp]
+*/
 class ExpAST : public BaseAST {
 public:
     std::unique_ptr<BaseAST> unaryExp;
@@ -134,12 +168,19 @@ public:
         return ans;
     }
 
-    std::string PrintIR(std::string tab) const override{
-        return tab + unaryExp->PrintIR(tab + "\t");
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        std::string var = unaryExp->PrintIR(tab, buffer);
+        return var;
     }
 };
 
-// PrimaryExpAST 也是 BaseAST
+// PrimaryExpAST: 表达式中优先计算的部分, 即被'()'包裹的表达式/单个数字
+// PrimaryExp ::= "(" Exp ")" | Number;
+/**
+*   翻译为: 
+*   1. return [Exp]
+*   2. return Number
+*/
 class PrimaryExpAST : public BaseAST {
 public:
     int kind;
@@ -150,18 +191,31 @@ public:
         std::string ans = "";
         ans += "PrimaryExpAST {\n";
         if(kind == 1) ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
-        else ans += tab + "\tnumber: " + std::to_string(number);
+        else ans += tab + "\tnumber: " + std::to_string(number) + "\n";
         ans += tab + "}\n";
         return ans;
     }
 
-    std::string PrintIR(std::string tab) const override{
-        if(kind == 1) return tab + exp->PrintIR(tab + '\t');
-        else return tab + std::to_string(number) + "\n";
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        if(kind == 1) {
+            std::string var = exp->PrintIR(tab, buffer);
+            return var;
+        }
+        else{
+            return std::to_string(number);
+        }
     }
 };
 
-// UnaryExpAST 也是 BaseAST
+// UnaryExpAST: 单目运算表达式
+// UnaryExp ::= PrimaryExp | '+' UnaryExp | '-' UnaryExp | '!' UnaryExp
+/**
+*   翻译为: 
+*   1. return [PrimaryExp]
+*   2. return [UnaryExp]
+*   3. 
+*   4. 
+*/
 class UnaryExpAST : public BaseAST {
 public:
     // 1: PrimaryExp
@@ -178,18 +232,43 @@ public:
         if(kind == 1) 
             ans += tab + "\texp: " + primaryExp->PrintAST(tab + "\t");
         else if(kind == 2) 
-            ans += tab + "\t + number: " + unaryExp->PrintAST(tab + "\t");
+            ans += tab + "\t + unaryExp: " + unaryExp->PrintAST(tab + "\t");
         else if(kind == 3) 
-            ans += tab + "\t - number: " + unaryExp->PrintAST(tab + "\t");
+            ans += tab + "\t - unaryExp: " + unaryExp->PrintAST(tab + "\t");
         else if(kind == 4) 
-            ans += tab + "\t ! number: " + unaryExp->PrintAST(tab + "\t");
+            ans += tab + "\t ! unaryExp: " + unaryExp->PrintAST(tab + "\t");
         
         ans += tab + "}\n";
         return ans;
     }
-
-    std::string PrintIR(std::string tab) const override{
-        if(kind == 1) return tab + primaryExp->PrintIR(tab + '\t');
-        else return tab + unaryExp->PrintIR(tab + '\t');
+    int GetNowVar(std::string var) const{
+        static int count_var = 0;
+        if(var[0] == '%') count_var++;
+        return count_var;
+    }
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        if(kind == 1) {
+            std::string var = primaryExp->PrintIR(tab, buffer);
+            return var;
+        }
+        // +, 不产生IR
+        else if(kind == 2){
+            std::string var = unaryExp->PrintIR(tab, buffer);
+            return var;
+        }
+        // -, IR格式为: %now = sub 0, var
+        else if(kind == 3){
+            std::string var = unaryExp->PrintIR(tab, buffer);
+            int now = GetNowVar(var);
+            buffer += tab + "%" + std::to_string(now) + " = sub 0, " + var + "\n";
+            return "%" + std::to_string(now); 
+        }
+        // !, IR格式为: %now = eq 0, var
+        else{
+            std::string var = unaryExp->PrintIR(tab, buffer);
+            int now = GetNowVar(var);
+            buffer += tab + "%" + std::to_string(now) + " = eq 0, " + var + "\n";
+            return "%" + std::to_string(now); 
+        }
     }
 };

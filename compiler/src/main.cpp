@@ -28,7 +28,9 @@ void Work(const char mode[], const char input[], const char output[]){
     cout << ast->PrintAST("");
 
     // IR树
-    //std::string IRTree = ast->PrintIR("");
+    std::string IRTree;
+    ast->PrintIR("", IRTree);
+    cout << IRTree;
     //GetKoopaIR(IRTree.c_str());
 }
 

@@ -128,7 +128,7 @@ Number
         $$ = $1;
     }
 
-// UnaryExp ::= PrimaryExp | UnaryOp UnaryExp;
+// UnaryExp ::= PrimaryExp | '+' UnaryExp | '-' UnaryExp | '!' UnaryExp
 UnaryExp
     : PrimaryExp{
         auto ast = new UnaryExpAST();
