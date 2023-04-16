@@ -38,8 +38,8 @@ using namespace std;
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义, 分别对应 ast_val 和 int_val
-%type <ast_val> FuncDef FuncType Block Stmt 
-%type <int_val> Number
+%type <ast_val> FuncDef FuncType Block Stmt Exp PrimaryExp UnaryExp
+%type <int_val> Number  
 
 %%
 
@@ -88,19 +88,75 @@ Block
     }
     ;
 
-// Stmt ::= 'return' Number ';';
+// Stmt ::= 'return' Exp ';';
 Stmt
-    : RETURN Number ';' {
+    : RETURN Exp ';' {
         auto ast = new StmtAST();
-        ast->number = $2;
+        ast->exp = unique_ptr<BaseAST>($2);
+        $$ = ast;
+    }
+    ;
+
+// Exp ::= UnaryExp;
+Exp
+    : UnaryExp {
+        auto ast = new ExpAST();
+        ast->unaryExp = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    ;
+
+// PrimaryExp ::= "(" Exp ")" | Number;
+PrimaryExp
+    : '(' Exp ')' {
+        auto ast = new PrimaryExpAST();
+        ast->kind = 1;
+        ast->exp = unique_ptr<BaseAST>($2);
+        $$ = ast;
+    }
+    | Number {
+        auto ast = new PrimaryExpAST();
+        ast->kind = 2;
+        ast->number = $1;
         $$ = ast;
     }
     ;
 
 // Number ::= INT_CONST;
 Number
-    : INT_CONST {
+    : INT_CONST{
         $$ = $1;
+    }
+
+// UnaryExp ::= PrimaryExp | UnaryOp UnaryExp;
+UnaryExp
+    : PrimaryExp{
+        auto ast = new UnaryExpAST();
+        ast->kind = 1;
+        ast->primaryExp = unique_ptr<BaseAST>($1);
+        ast->GetNumber();
+        $$ = ast;
+    }
+    | '+' UnaryExp{
+        auto ast = new UnaryExpAST();
+        ast->kind = 2;
+        ast->unaryExp = unique_ptr<BaseAST>($2);
+        ast->GetNumber();
+        $$ = ast;
+    }
+    | '-' UnaryExp{
+        auto ast = new UnaryExpAST();
+        ast->kind = 3;
+        ast->unaryExp = unique_ptr<BaseAST>($2);
+        ast->GetNumber();
+        $$ = ast;
+    }
+    | '!' UnaryExp{
+        auto ast = new UnaryExpAST();
+        ast->kind = 4;
+        ast->unaryExp = unique_ptr<BaseAST>($2);
+        ast->GetNumber();
+        $$ = ast;
     }
     ;
 

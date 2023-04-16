@@ -4,6 +4,9 @@
 class BaseAST {
 public:
     virtual ~BaseAST() = default;
+    virtual int GetNumber(){
+        return 0;
+    }
     virtual std::string PrintAST(std::string tab) const = 0;
     virtual std::string PrintIR(std::string tab) const = 0;
 };
@@ -106,17 +109,105 @@ public:
 // Stmt 也是 BaseAST
 class StmtAST : public BaseAST {
 public:
-    int number;
+    std::unique_ptr<BaseAST> exp;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "StmtAST {\n";
-        ans += tab + "\tnumber: " + std::to_string(number) + "\n";
+        ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
         ans += tab + "}\n";
         return ans;
     }
 
     std::string PrintIR(std::string tab) const override{
-        return tab + "ret " + std::to_string(number) + "\n";
+        return tab + "ret " + exp->PrintIR(tab + "\t");
+    }
+};
+
+// Exp 也是 BaseAST
+class ExpAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> unaryExp;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "ExpAST {\n";
+        ans += tab + "\tunaryExp: " + unaryExp->PrintAST(tab + "\t");
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab) const override{
+        return tab + unaryExp->PrintIR(tab + "\t");
+    }
+};
+
+// PrimaryExpAST 也是 BaseAST
+class PrimaryExpAST : public BaseAST {
+public:
+    int kind;
+    std::unique_ptr<BaseAST> exp;
+    int number;
+
+    int GetNumber() override{
+        return number;
+    }
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "PrimaryExpAST {\n";
+        if(kind == 1) ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+        else ans += tab + "\tnumber: " + std::to_string(number);
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab) const override{
+        if(kind == 1) return tab + exp->PrintIR(tab + '\t');
+        else return tab + std::to_string(number) + "\n";
+    }
+};
+
+// UnaryExpAST 也是 BaseAST
+class UnaryExpAST : public BaseAST {
+public:
+    // 1: PrimaryExp
+    // 2: + unaryExp
+    // 3: - unaryExp
+    // 4: ! unaryExp 
+    int kind;
+    std::unique_ptr<BaseAST> primaryExp;
+    std::unique_ptr<BaseAST> unaryExp;
+    int number;
+
+    int GetNumber() override{
+        if(kind == 1){
+            number = primaryExp->GetNumber();
+        }else {
+            number = unaryExp->GetNumber();
+        }
+
+        return number;
+    }
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "UnaryExpAST {\n";
+        if(kind == 1) 
+            ans += tab + "\texp: " + primaryExp->PrintAST(tab + "\t");
+        else if(kind == 2) 
+            ans += tab + "\t + number: " + unaryExp->PrintAST(tab + "\t");
+        else if(kind == 3) 
+            ans += tab + "\t - number: " + unaryExp->PrintAST(tab + "\t");
+        else if(kind == 4) 
+            ans += tab + "\t ! number: " + unaryExp->PrintAST(tab + "\t");
+        
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab) const override{
+        if(kind == 1) return tab + primaryExp->PrintIR(tab + '\t');
+        else return tab + std::to_string(number);
     }
 };
