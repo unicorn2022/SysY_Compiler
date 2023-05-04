@@ -7,7 +7,8 @@
 
 ```bash
 make
-/root/SysY_Compiler/compiler/build/compiler -koopa hello.c -o hello.koopa
+/root/SysY_Compiler/compiler/build/compiler -koopa task.c -o task.koopa
+/root/SysY_Compiler/compiler/build/compiler -riscv task.c -o task.S
 ```
 
 ### 2	自动测试

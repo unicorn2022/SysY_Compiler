@@ -1,19 +1,15 @@
 #pragma once
 #include <cassert>
 #include <cstdio>
-#include <iostream>
-#include <memory>
 #include <string>
-#include "AST.hpp"
+#include <iostream>
+#include <fstream>
+#include <memory>
 #include "koopa.h"
 
 using namespace std;
 
-// 声明 lexer 的输入, 以及 parser 函数
-extern FILE *yyin;
-extern int yyparse(unique_ptr<BaseAST> &ast);
-
-void Work(const char mode[], const char input[], const char output[]);
+void back_main(const char input[], const char output[]);
 
 // 从文本IR中解析KoopaIR
 void GetKoopaIR(const char str[]);
