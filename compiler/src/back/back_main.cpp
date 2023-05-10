@@ -253,19 +253,79 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
 
     // 根据op判断是哪一个操作
     switch (binary.op){
+        // lhs != rhs
+        case KOOPA_RBO_NOT_EQ:{
+            // 通过sub后与0判相等, 模拟!=操作
+            cout << "\tsub t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+            
+            cout << "\tsnez t" << now << ", t" << now << "\n";
+            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            break;
+        }
         // lhs == rhs
         case KOOPA_RBO_EQ:{
-            
-            // 通过xor操作模拟==操作
-            cout << "\txor t" << now << ", ";
+            // 通过sub后与0判相等, 模拟==操作
+            cout << "\tsub t" << now << ", ";
             if(lhs_is_integer) cout << "x0, ";
             else cout << "t" << lhs_value << ", ";
             if(rhs_is_integer) cout << "x0, ";
             else cout << "t" << rhs_value << "\n";
             
             cout << "\tseqz t" << now << ", t" << now << "\n";
+            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
             break;
         }
+        // lhs > rhs
+        case KOOPA_RBO_GT:{
+            cout << "\tsgt t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+            
+            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            break;
+        }
+        // lhs < rhs
+        case KOOPA_RBO_LT:{
+            cout << "\tslt t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+            
+            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            break;
+        }
+        // lhs >= rhs
+        case KOOPA_RBO_GE:{
+            cout << "\tslt t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+            
+            cout << "\txori t" << now << ", t" << now << ", 1\n";
+            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            break;
+        }
+        // lhs <= rhs
+        case KOOPA_RBO_LE:{
+            cout << "\tsgt t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+            
+            cout << "\txori t" << now << ", t" << now << ", 1\n";
+            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            break;
+        }
+
 
         // lhs + rhs
         case KOOPA_RBO_ADD:{
@@ -314,11 +374,60 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
             else cout << "t" << lhs_value << ", ";
             if(rhs_is_integer) cout << "x0, ";
             else cout << "t" << rhs_value << "\n";
-            
+
             break;
         }
+        // lhs & rhs
+        case KOOPA_RBO_AND:{
+            cout << "\tand t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
 
+            break;
+        }
+        // lhs | rhs
+        case KOOPA_RBO_OR:{
+            cout << "\tor t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
 
+            break;
+        }
+        // lhs ^ rhs
+        case KOOPA_RBO_XOR:{
+            cout << "\txor t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+
+            break;
+        }
+        // lhs << rhs
+        case KOOPA_RBO_SHL:{
+            cout << "\tsll t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+
+            break;
+        }
+        // lhs >> rhs
+        case KOOPA_RBO_SHR:{
+            cout << "\tsra t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+
+            break;
+        }
+        // 其他情况
         default:{
             printf("Visit_Inst_Binary binary.op = %d\n", binary.op);
             assert(false);
