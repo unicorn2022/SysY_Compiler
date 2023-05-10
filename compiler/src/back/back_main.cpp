@@ -267,6 +267,16 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
             break;
         }
 
+        // lhs + rhs
+        case KOOPA_RBO_ADD:{
+            cout << "\tadd t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+
+            break;
+        }
         // lhs - rhs
         case KOOPA_RBO_SUB:{
             cout << "\tsub t" << now << ", ";
@@ -277,6 +287,37 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
 
             break;
         }
+        // lhs * rhs
+        case KOOPA_RBO_MUL:{
+            cout << "\tmul t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+
+            break;
+        }
+        // lhs / rhs
+        case KOOPA_RBO_DIV:{
+            cout << "\tdiv t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+
+            break;
+        }
+        // lhs % rhs
+        case KOOPA_RBO_MOD:{
+            cout << "\trem t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+
+            break;
+        }
+
 
         default:{
             printf("Visit_Inst_Binary binary.op = %d\n", binary.op);
