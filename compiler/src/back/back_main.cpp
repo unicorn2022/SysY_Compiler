@@ -314,7 +314,7 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
             else cout << "t" << lhs_value << ", ";
             if(rhs_is_integer) cout << "x0, ";
             else cout << "t" << rhs_value << "\n";
-
+            
             break;
         }
 
