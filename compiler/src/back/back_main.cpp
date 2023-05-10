@@ -1,4 +1,5 @@
 #include "back_main.hpp"
+std::map<koopa_raw_value_t, int32_t> hasDone;
 
 void back_main(const char input[], const char output[]){
     // 从input中读取IR树
@@ -6,15 +7,12 @@ void back_main(const char input[], const char output[]){
     std::istreambuf_iterator<char> beg(fin), end;
     std::string IRTree(beg, end);
     
-    // std::ostringstream tmp;
-    // tmp << fin.rdbuf();
-    // std::string IRTree = tmp.str();
-
-    cout << "back:\n" << IRTree;
-    // GetKoopaIR(IRTree.c_str());
+    // 解析KoopaIR
+    GetKoopaIR(IRTree.c_str());
 }
 
-// 从文本IR中解析KoopaIR
+// 从文本IR中解析KoopaIR, 生成raw program
+// 通过Visit(raw program), 得到最后的RISCV指令
 void GetKoopaIR(const char str[]){
     // 解析字符串 str, 得到 Koopa IR 程序
     koopa_program_t program;
@@ -31,7 +29,7 @@ void GetKoopaIR(const char str[]){
     koopa_delete_program(program);
 
     // 处理 raw program
-    Visit(raw);
+    Visit_Program(raw);
     
 
     // 处理完成, 释放 raw program builder 占用的内存
@@ -42,107 +40,249 @@ void GetKoopaIR(const char str[]){
 
 
 // 访问 raw program
-void Visit(const koopa_raw_program_t &program) {
-    // printf("---------------program:\n");
+void Visit_Program(const koopa_raw_program_t &program) {
+    // printf("-----------Visit_Program---------------\n");
 
     // 访问所有全局变量
-    Visit(program.values);
+    Visit_Slice(program.values);
 
     // 执行一些其他的必要操作
     cout << "\t.text\n";        // 声明之后的数据需要被放入代码段中
     cout << "\t.globl main\n";  // 声明全局符号 main, 以便链接器处理
+    
     // 访问所有函数
-    Visit(program.funcs);
+    Visit_Slice(program.funcs);
 }
 
 // 访问 raw slice
-void Visit(const koopa_raw_slice_t &slice) {
-    // printf("---------------slice:\n");
+void Visit_Slice(const koopa_raw_slice_t &slice) {
+    // printf("-----------Visit_Slice---------------\n");
 
     for (size_t i = 0; i < slice.len; ++i) {
+        // 当前slice的内容
         auto ptr = slice.buffer[i];
-        // 根据 slice 的 kind 决定将 ptr 视作何种元素
+        
+        // 当前slice的类型
         switch (slice.kind) {
-        case KOOPA_RSIK_FUNCTION:
-            // 访问函数
-            Visit(reinterpret_cast<koopa_raw_function_t>(ptr));
-            break;
-        case KOOPA_RSIK_BASIC_BLOCK:
-            // 访问基本块
-            Visit(reinterpret_cast<koopa_raw_basic_block_t>(ptr));
-            break;
-        case KOOPA_RSIK_VALUE:
-            // 访问指令
-            Visit(reinterpret_cast<koopa_raw_value_t>(ptr));
-            break;
-        default:
-            // 我们暂时不会遇到其他内容, 于是不对其做任何处理
-            assert(false);
+            // 当前slice的类型为function
+            case KOOPA_RSIK_FUNCTION:{
+                Visit_Function(reinterpret_cast<koopa_raw_function_t>(ptr));
+                break;
+            }
+            
+            // 当前slice的类型为basic_block
+            case KOOPA_RSIK_BASIC_BLOCK:{
+                Visit_Basic_Block(reinterpret_cast<koopa_raw_basic_block_t>(ptr));
+                break;
+            }
+            
+            // 当前slice的类型为value(即指令)
+            case KOOPA_RSIK_VALUE:{
+                Visit_Inst(reinterpret_cast<koopa_raw_value_t>(ptr));
+                break;
+            }
+            
+            // 其他情况
+            default:{
+                printf("[Visit_Slice]: slice.kind = %d\n", slice.kind);
+                assert(false);
+            }
         }
     }
 }
 
 // 访问函数
-void Visit(const koopa_raw_function_t &func) {
-    // printf("---------------func: name = %s\n", func->name);
+void Visit_Function(const koopa_raw_function_t &func) {
+    // printf("-----------Visit_Function---------------\n");
 
-    // 执行一些其他的必要操作
-    cout << func->name+1 << ":\n";  // 标记 main 的入口点
-    // 访问所有基本块
-    Visit(func->bbs);
+    // 输出当前函数的函数名, 标记当前函数的入口
+    // 由于KoopaIR中函数名均为@name, 因此只需要输出name+1即可
+    cout << func->name+1 << ":\n";
+
+    // 访问当前函数的所有参数
+    // koopa_raw_slice_t params, 需要通过Slice进行进一步划分
+    // Visit_Slice(func->params)
+
+    // 访问当前函数的所有基本块
+    // koopa_raw_slice_t bbs, 需要通过Slice进行进一步划分
+    Visit_Slice(func->bbs);
+
+    // 判断当前函数的返回值
+    // koopa_raw_type_t Return_Type = func->ty
 }
 
 // 访问基本块
-void Visit(const koopa_raw_basic_block_t &bb) {
-    // printf("---------------bb: name = %s\n", bb->name);
+void Visit_Basic_Block(const koopa_raw_basic_block_t &bb) {
+    // printf("-----------Visit_Basic_Block---------------\n");
+    
+    // 输出当前基本块的名成, 标记当前基本块的入口
+    // 由于KoopaIR中基本块均为@name, 因此只需要输出name+1即可
+    cout << bb->name+1 << ":\n";  // 标记 基本块 的入口点
+    
+    // 访问当前基本块的所有参数
+    // koopa_raw_slice_t params, 需要通过Slice进行进一步划分
+    // Visit_Slice(bb->params)
 
-    // 执行一些其他的必要操作
-    // cout << bb->name+1 << ":\n";  // 标记 基本块 的入口点
+    // 访问当前基本块的所有用到的value
+    // koopa_raw_slice_t used_by, 需要通过Slice进行进一步划分
+    // Visit_Slice(bb->used_by) 
+
     // 访问所有指令
-    Visit(bb->insts);
+    // koopa_raw_slice_t insts, 需要通过Slice进行进一步划分
+    Visit_Slice(bb->insts);
 }
 
 // 访问指令
-void Visit(const koopa_raw_value_t &value) {
-    // printf("---------------bb: name = %s\n", value->name);
+int32_t Visit_Inst(const koopa_raw_value_t &value) {
+    if(hasDone.find(value) != hasDone.end()) return hasDone[value];
+    // printf("-----------Visit_Inst, addr = %x---------------\n", value);
+
 
     // 根据指令类型判断后续需要如何访问
     const auto &kind = value->kind;
+    
     switch (kind.tag) {
-        case KOOPA_RVT_RETURN:
         // 访问 return 指令
-        Visit(kind.data.ret);
-        break;
-        case KOOPA_RVT_INTEGER:
+        case KOOPA_RVT_RETURN:{
+            return hasDone[value] = Visit_Inst_Return(kind.data.ret);
+            break;
+        }
+        
         // 访问 integer 指令
-        Visit(kind.data.integer);
-        break;
-        default:
-        // 其他类型暂时遇不到
-        assert(false);
+        case KOOPA_RVT_INTEGER:{
+            return hasDone[value] = Visit_Inst_Integer(kind.data.integer);
+            break;
+        }
+        
+        // 访问双目运算符
+        case KOOPA_RVT_BINARY:{
+            return hasDone[value] = Visit_Inst_Binary(kind.data.binary);
+            break;
+        }
+        
+        // 其他类型
+        default:{
+            printf("Visit_Inst kind.tag = %d\n", kind.tag);
+            assert(false);
+        }
     }
 }
 
 // 访问 return 指令
-void Visit(const koopa_raw_return_t &ret){
-    // printf("---------------return: name=%s\n", ret.value->name);
-    
+int32_t Visit_Inst_Return(const koopa_raw_return_t &ret){
+    // printf("-----------Visit_Inst_Return---------------\n");
+
     // return 指令中, value 代表返回值
     koopa_raw_value_t ret_value = ret.value;
+    
+    // 根据ret_value的类型, 判断使用什么指令
+    switch (ret_value->kind.tag) {
+        // ret_value为integer
+        case KOOPA_RVT_INTEGER:{
+            // 取出整数的值, 并将其存放在a0中, 然后返回
+            cout << "\tli a0, " << Visit_Inst_Integer(ret_value->kind.data.integer) << "\n";
+            cout << "\tret\n";
+            break;
+        }
 
-    // 示例程序中, ret_value 一定是一个 integer
-    assert(ret_value->kind.tag == KOOPA_RVT_INTEGER);
-
-    // 于是我们可以按照处理 integer 的方式处理 ret_value
-    // integer 中, value 代表整数的数值
-    // 示例程序中, 这个数值一定是 0
-    int32_t int_val = ret_value->kind.data.integer.value;
-
-    cout << "\tli a0, " << int_val << "\n";
-    cout << "\tret\n";
+        // 其他情况下, 将寄存器中的值放到a0中, 然后返回
+        default:{
+            int reg = Visit_Inst(ret_value);
+            cout << "\tmv a0, t" << reg << "\n";
+            cout << "\tret\n";
+        }
+    }    
+    return 0;
 }
 
-// 访问 integer 指令
-void Visit(const koopa_raw_integer_t &integer){
-    // printf("---------------Integer\n");
+// 访问 integer 指令, 返回整数值
+int32_t Visit_Inst_Integer(const koopa_raw_integer_t &integer){
+    // printf("Visit_Inst_Integer: value = %d\n", integer.value);
+    return integer.value;
+}
+
+// 访问 binary 指令, 返回寄存器编号
+int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
+    // printf("-----------Visit_Inst_Binary, op = %d---------------\n", binary.op);
+
+    // 取出两个操作数
+    koopa_raw_value_t lhs = binary.lhs;
+    koopa_raw_value_t rhs = binary.rhs;
+    bool lhs_is_integer = false, rhs_is_integer = false;
+    int32_t lhs_value = 0, rhs_value = 0;
+
+    // lhs是整数指令
+    if(lhs->kind.tag == KOOPA_RVT_INTEGER){
+        lhs_is_integer = true;
+        lhs_value = Visit_Inst_Integer(lhs->kind.data.integer);
+    }
+    else{
+        lhs_is_integer = false;
+        lhs_value = Visit_Inst(lhs);
+    }
+    // rhs是整数指令
+    if(rhs->kind.tag == KOOPA_RVT_INTEGER){
+        rhs_is_integer = true;
+        rhs_value = Visit_Inst_Integer(rhs->kind.data.integer);
+    }else{
+        rhs_is_integer = false;
+        rhs_value = Visit_Inst(rhs);
+    }
+
+    // 找到结果所在的寄存器编号now
+    int now = 0;
+    if(!lhs_is_integer) now = std::max(now, lhs_value+1);
+    if(!rhs_is_integer) now = std::max(now, rhs_value+1);
+
+    // lhs是整数且不为0, 需要将其移动到寄存器中
+    if(lhs_is_integer && lhs_value != 0) {
+        cout << "\tli t" << now << ", " << lhs_value << "\n";
+        lhs_is_integer = false;
+        lhs_value = now;
+    }
+    // rhs是整数且不为0, 需要将其移动到寄存器中
+    if(rhs_is_integer && rhs_value != 0) {
+        cout << "\tli t" << now + 1 << ", " << rhs_value << "\n";
+        rhs_is_integer = false;
+        rhs_value = now + 1;
+    }
+    
+    // printf("lhs.name = %s is_integer = %d value = %d\n", lhs->name, lhs_is_integer, lhs_value);
+    // printf("rhs.name = %s is_integer = %d value = %d\n", rhs->name, rhs_is_integer, rhs_value);
+    // printf("now = %d\n", now);
+
+    // 根据op判断是哪一个操作
+    switch (binary.op){
+        // lhs == rhs
+        case KOOPA_RBO_EQ:{
+            
+            // 通过xor操作模拟==操作
+            cout << "\txor t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+            
+            cout << "\tseqz t" << now << ", t" << now << "\n";
+            break;
+        }
+
+        // lhs - rhs
+        case KOOPA_RBO_SUB:{
+            cout << "\tsub t" << now << ", ";
+            if(lhs_is_integer) cout << "x0, ";
+            else cout << "t" << lhs_value << ", ";
+            if(rhs_is_integer) cout << "x0, ";
+            else cout << "t" << rhs_value << "\n";
+
+            break;
+        }
+
+        default:{
+            printf("Visit_Inst_Binary binary.op = %d\n", binary.op);
+            assert(false);
+        }
+    }
+
+    return now;
 }

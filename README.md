@@ -23,3 +23,5 @@ autotest -koopa -s lv1 /root/SysY_Compiler/compiler/
 
 ```bash
 autotest -riscv -s lv1 /root/SysY_Compiler/compiler/
+
+```

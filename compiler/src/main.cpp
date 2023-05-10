@@ -11,7 +11,7 @@ int main(int argc, const char *argv[]) {
     const char IRFile[] = "task.koopa";
 
     // 前端读入input文件，生成IR树，放到IRFile文件中
-    front_main(input, IRFile);
+    // front_main(input, IRFile);
     // 后端读入IRFile文件，解析IR树，生成RISCV，放到output文件中
     back_main(IRFile, output);
     return 0;
