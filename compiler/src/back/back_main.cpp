@@ -109,7 +109,7 @@ void Visit_Function(const koopa_raw_function_t &func) {
     // 由于KoopaIR中函数名均为@name, 因此只需要输出name+1即可
     cout << func->name+1 << ":\n";
 
-    // 计算当前函数可能用到的栈空间大小
+    // 计算当前函数指令可能用到的栈空间大小
     int32_t need_stack = 0;
     for (size_t i = 0; i < func->bbs.len; ++i) {
         // 当前func->bbs的内容
@@ -145,7 +145,7 @@ int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
             case KOOPA_RVT_ALLOC:{
                 koopa_raw_type_t alloc_type = value->ty;
                 // 判断alloc的类型, need_stack增加不同的值
-                switch(alloc_type -> tag){
+                switch(alloc_type->tag){
                     // alloc申请了一个指针的地方, 那么就需要指针的类型是什么
                     case KOOPA_RTT_POINTER:{
                         const struct koopa_raw_type_kind* base = alloc_type->data.pointer.base;
@@ -506,6 +506,7 @@ int32_t Visit_Inst_Return(const koopa_raw_return_t &ret){
         // ret_value为intege, 则取出整数的值, 并将其存放在a0中, 然后返回
         case KOOPA_RVT_INTEGER:{
             cout << "\tli   a0, " << Visit_Inst_Integer(ret_value->kind.data.integer) << "\n";
+            break;
         }
 
         // 其他情况下, 将内存中的值取出放到a0中, 然后返回
