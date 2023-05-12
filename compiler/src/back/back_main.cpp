@@ -1,5 +1,13 @@
+#include <cassert>
+#include <cstdio>
+#include <iostream>
+#include <fstream>
+#include <algorithm>
+#include <string>
+#include <vector>
+#include <map>
 #include "back_main.hpp"
-std::map<koopa_raw_value_t, int32_t> hasDone;
+using namespace std;
 
 void back_main(const char input[], const char output[]){
     // 从input中读取IR树
@@ -91,6 +99,8 @@ void Visit_Slice(const koopa_raw_slice_t &slice) {
     }
 }
 
+
+/*====================  函数部分 =======================*/ 
 // 访问函数
 void Visit_Function(const koopa_raw_function_t &func) {
     // printf("-----------Visit_Function---------------\n");
@@ -99,9 +109,20 @@ void Visit_Function(const koopa_raw_function_t &func) {
     // 由于KoopaIR中函数名均为@name, 因此只需要输出name+1即可
     cout << func->name+1 << ":\n";
 
+    // 计算当前函数可能用到的栈空间大小
+    int32_t need_stack = 0;
+    for (size_t i = 0; i < func->bbs.len; ++i) {
+        // 当前func->bbs的内容
+        auto ptr = func->bbs.buffer[i];
+        // 计算该bbs需要的栈空间大小
+        need_stack += Get_Basic_Block_Need_Stack(reinterpret_cast<koopa_raw_basic_block_t>(ptr));
+    }
+    // 开辟栈空间
+    cout << "\taddi sp, sp, -" << need_stack << "\n";
+
     // 访问当前函数的所有参数
     // koopa_raw_slice_t params, 需要通过Slice进行进一步划分
-    // Visit_Slice(func->params)
+    // Visit_Slice(func->params);
 
     // 访问当前函数的所有基本块
     // koopa_raw_slice_t bbs, 需要通过Slice进行进一步划分
@@ -109,6 +130,50 @@ void Visit_Function(const koopa_raw_function_t &func) {
 
     // 判断当前函数的返回值
     // koopa_raw_type_t Return_Type = func->ty
+}
+
+// 遍历当前函数的所有指令, 计算当前函数可能用到的栈空间大小
+int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
+    int32_t need_stack = 0;
+    for (size_t i = 0; i < bbs->insts.len; ++i) {
+        // 当前bb->insts的内容
+        auto ptr = bbs->insts.buffer[i];
+        // 计算该inst需要的栈空间大小
+        koopa_raw_value_t value = reinterpret_cast<koopa_raw_value_t>(ptr);
+        switch (value->kind.tag) {
+            // 当前指令为访问 alloc 指令 (tag = 6)
+            case KOOPA_RVT_ALLOC:{
+                koopa_raw_type_t alloc_type = value->ty;
+                // 判断alloc的类型, need_stack增加不同的值
+                switch(alloc_type -> tag){
+                    // alloc申请了一个指针的地方, 那么就需要指针的类型是什么
+                    case KOOPA_RTT_POINTER:{
+                        const struct koopa_raw_type_kind* base = alloc_type->data.pointer.base;
+                        // int32指针
+                        if(base->tag == KOOPA_RTT_INT32){
+                            need_stack += 4; // int32为4字节
+                        }else{
+                            printf("Get_Basic_Block_Need_Stack: base.tag = %d\n", base->tag);
+                            assert(false);
+                        }
+                        break;
+                    }
+                    default:{
+                        printf("Visit_Inst_Alloc: type = %d\n", alloc_type->tag);
+                        assert(false);
+                    }
+                }
+                break;
+            }
+            // 访问 load 指令 (tag = 8)
+            case KOOPA_RVT_LOAD: { need_stack += 4; break; }            
+            // 访问双目运算符 (tag = 12)
+            case KOOPA_RVT_BINARY:{ need_stack += 4; break; }           
+            // 其他类型
+            default:{ break; }
+        }
+    }
+    return need_stack;
 }
 
 // 访问基本块
@@ -132,32 +197,54 @@ void Visit_Basic_Block(const koopa_raw_basic_block_t &bb) {
     Visit_Slice(bb->insts);
 }
 
+
+
+/*====================  指令部分 =======================*/ 
+// 指令 => 在内存中的位置, 即sp+?
+std::map<koopa_raw_value_t, int32_t> inst_to_index;
+// 当前帧已经使用的栈的大小(单位: 字节)
+int32_t use_stack = 0;
+
 // 访问指令
 int32_t Visit_Inst(const koopa_raw_value_t &value) {
-    if(hasDone.find(value) != hasDone.end()) return hasDone[value];
+    if(inst_to_index.find(value) != inst_to_index.end()) return inst_to_index[value];
     // printf("-----------Visit_Inst, addr = %x---------------\n", value);
 
 
     // 根据指令类型判断后续需要如何访问
     const auto &kind = value->kind;
-    
+
+    // 输出一个换行, 将不同指令分开
+    cout << "\n";
     switch (kind.tag) {
-        // 访问 return 指令
-        case KOOPA_RVT_RETURN:{
-            return hasDone[value] = Visit_Inst_Return(kind.data.ret);
-            break;
-        }
-        
-        // 访问 integer 指令
+        // 访问 integer 指令 (tag = 0)
         case KOOPA_RVT_INTEGER:{
-            return hasDone[value] = Visit_Inst_Integer(kind.data.integer);
-            break;
+            return inst_to_index[value] = Visit_Inst_Integer(kind.data.integer);
         }
         
-        // 访问双目运算符
+        // 访问 alloc 指令 (tag = 6)
+        case KOOPA_RVT_ALLOC:{
+            return inst_to_index[value] = Visit_Inst_Alloc(value->ty);
+        }
+
+        // 访问 load 指令 (tag = 8)
+        case KOOPA_RVT_LOAD:{
+            return inst_to_index[value] = Visit_Inst_Load(kind.data.load);
+        }
+
+        // 访问 store 指令 (tag = 9)
+        case KOOPA_RVT_STORE:{
+            return inst_to_index[value] = Visit_Inst_Store(kind.data.store);
+        }
+        
+        // 访问双目运算符 (tag = 12)
         case KOOPA_RVT_BINARY:{
-            return hasDone[value] = Visit_Inst_Binary(kind.data.binary);
-            break;
+            return inst_to_index[value] = Visit_Inst_Binary(kind.data.binary);
+        }
+
+        // 访问 return 指令 (tag = 16)
+        case KOOPA_RVT_RETURN:{
+            return inst_to_index[value] = Visit_Inst_Return(kind.data.ret);
         }
         
         // 其他类型
@@ -168,263 +255,190 @@ int32_t Visit_Inst(const koopa_raw_value_t &value) {
     }
 }
 
-// 访问 return 指令
-int32_t Visit_Inst_Return(const koopa_raw_return_t &ret){
-    // printf("-----------Visit_Inst_Return---------------\n");
-
-    // return 指令中, value 代表返回值
-    koopa_raw_value_t ret_value = ret.value;
-    
-    // 根据ret_value的类型, 判断使用什么指令
-    switch (ret_value->kind.tag) {
-        // ret_value为integer
-        case KOOPA_RVT_INTEGER:{
-            // 取出整数的值, 并将其存放在a0中, 然后返回
-            cout << "\tli a0, " << Visit_Inst_Integer(ret_value->kind.data.integer) << "\n";
-            cout << "\tret\n";
-            break;
-        }
-
-        // 其他情况下, 将寄存器中的值放到a0中, 然后返回
-        default:{
-            int reg = Visit_Inst(ret_value);
-            cout << "\tmv a0, t" << reg << "\n";
-            cout << "\tret\n";
-        }
-    }    
-    return 0;
-}
-
-// 访问 integer 指令, 返回整数值
+// 访问 integer 指令, 返回整数值 (tag = 6)
 int32_t Visit_Inst_Integer(const koopa_raw_integer_t &integer){
-    // printf("Visit_Inst_Integer: value = %d\n", integer.value);
+    // printf("-----------Visit_Inst_Integer: value = %d-----------\n", integer.value);
     return integer.value;
 }
 
-// 访问 binary 指令, 返回寄存器编号
+// 访问 alloc 指令, 返回结果所在的sp+x (tag = 6)
+int32_t Visit_Inst_Alloc(const koopa_raw_type_t &alloc_type){
+    // printf("-----------Visit_Inst_Alloc: type = %d-----------\n", alloc_type->tag);
+    
+    switch(alloc_type -> tag){
+        // alloc申请了一个指针的地方, 那么就需要指针的类型是什么
+        case KOOPA_RTT_POINTER:{
+            const struct koopa_raw_type_kind* base = alloc_type->data.pointer.base;
+            // 由于是局部空间, 则只需要将栈指针后移, 不需要额外的操作
+            if(base->tag == KOOPA_RTT_INT32){
+                use_stack += 4; // int32为4字节
+                return use_stack - 4;
+            }else{
+                printf("Visit_Inst_Alloc: base.tag = %d\n", base->tag);
+                assert(false);
+            }
+        }
+
+        default:{
+            printf("Visit_Inst_Alloc: type = %d\n", alloc_type->tag);
+            assert(false);
+        }
+    }
+    return 0;
+}
+
+// 访问 load 指令, 返回结果所在的sp+x (tag = 8)
+int32_t Visit_Inst_Load(const koopa_raw_load_t &load){
+    // printf("-----------Visit_Inst_Load-----------\n");
+
+    // 先将地址对应的值读取到t0中
+    koopa_raw_value_t src = load.src;
+    cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+    // 再将t0存入内存中
+    cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    use_stack += 4;
+    return use_stack - 4;
+}
+
+// 访问 store 指令 (tag = 9)
+int32_t Visit_Inst_Store(const koopa_raw_store_t &store){
+    // printf("-----------Visit_Inst_Store-----------\n");
+
+    koopa_raw_value_t value = store.value;
+    koopa_raw_value_t dest = store.dest;
+
+    // 待存储的value为整数指令, 将其li到t0中
+    int32_t value_data = 0;
+    if(value->kind.tag == KOOPA_RVT_INTEGER){
+        cout << "\tli   t0, " << Visit_Inst_Integer(value->kind.data.integer) << "\n"; 
+    }
+    // 待存储的value在内存中, 将其lw到t0中
+    else{
+        cout << "\tlw   t0, " << Visit_Inst(value) << "(sp)\n";
+    }
+
+    // 将value存储到内存中
+    cout << "\tsw   t0, " << Visit_Inst(dest) << "(sp)\n";
+    return 0;
+}
+
+// 访问 binary 指令, 返回结果所在的sp+x (tag = 12)
 int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
     // printf("-----------Visit_Inst_Binary, op = %d---------------\n", binary.op);
 
     // 取出两个操作数
     koopa_raw_value_t lhs = binary.lhs;
     koopa_raw_value_t rhs = binary.rhs;
-    bool lhs_is_integer = false, rhs_is_integer = false;
-    int32_t lhs_value = 0, rhs_value = 0;
 
-    // lhs是整数指令
+    // 将lhs的值保存在t0中, rhs的值保存在t1中
     if(lhs->kind.tag == KOOPA_RVT_INTEGER){
-        lhs_is_integer = true;
-        lhs_value = Visit_Inst_Integer(lhs->kind.data.integer);
+        // lhs是整数指令
+        cout << "\tli   t0, " << Visit_Inst_Integer(lhs->kind.data.integer) << "\n";
+    } else{
+        // 不是整数指令, 则变量一定在内存中
+        cout << "\tlw   t0, " << Visit_Inst(lhs) << "(sp)\n";
     }
-    else{
-        lhs_is_integer = false;
-        lhs_value = Visit_Inst(lhs);
-    }
-    // rhs是整数指令
     if(rhs->kind.tag == KOOPA_RVT_INTEGER){
-        rhs_is_integer = true;
-        rhs_value = Visit_Inst_Integer(rhs->kind.data.integer);
-    }else{
-        rhs_is_integer = false;
-        rhs_value = Visit_Inst(rhs);
+        // rhs是整数指令
+        cout << "\tli   t1, " << Visit_Inst_Integer(rhs->kind.data.integer) << "\n";
+    } else{
+        // 不是整数指令, 则变量一定在内存中
+        cout << "\tlw   t1, " << Visit_Inst(rhs) << "(sp)\n";
     }
 
-    // 找到结果所在的寄存器编号now
-    int now = 0;
-    if(!lhs_is_integer) now = std::max(now, lhs_value+1);
-    if(!rhs_is_integer) now = std::max(now, rhs_value+1);
 
-    // lhs是整数且不为0, 需要将其移动到寄存器中
-    if(lhs_is_integer && lhs_value != 0) {
-        cout << "\tli t" << now << ", " << lhs_value << "\n";
-        lhs_is_integer = false;
-        lhs_value = now;
-    }
-    // rhs是整数且不为0, 需要将其移动到寄存器中
-    if(rhs_is_integer && rhs_value != 0) {
-        cout << "\tli t" << now + 1 << ", " << rhs_value << "\n";
-        rhs_is_integer = false;
-        rhs_value = now + 1;
-    }
-    
-    // printf("lhs.name = %s is_integer = %d value = %d\n", lhs->name, lhs_is_integer, lhs_value);
-    // printf("rhs.name = %s is_integer = %d value = %d\n", rhs->name, rhs_is_integer, rhs_value);
-    // printf("now = %d\n", now);
-
-    // 根据op判断是哪一个操作
+    // 根据op判断是哪一个操作, 计算结果保存在t0中
     switch (binary.op){
         // lhs != rhs
         case KOOPA_RBO_NOT_EQ:{
             // 通过sub后与0判相等, 模拟!=操作
-            cout << "\tsub t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-            
-            cout << "\tsnez t" << now << ", t" << now << "\n";
-            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            cout << "\tsub  t0, t0, t1\n";
+            cout << "\tsnez t0, t0\n";
+            cout << "\tandi t0, t0, 0xff\n";
             break;
         }
         // lhs == rhs
         case KOOPA_RBO_EQ:{
             // 通过sub后与0判相等, 模拟==操作
-            cout << "\tsub t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-            
-            cout << "\tseqz t" << now << ", t" << now << "\n";
-            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            cout << "\tsub  t0, t0, t1\n";
+            cout << "\tseqz t0, t0\n";
+            cout << "\tandi t0, t0, 0xff\n";
             break;
         }
         // lhs > rhs
         case KOOPA_RBO_GT:{
-            cout << "\tsgt t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-            
-            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            cout << "\tsgt  t0, t0, t1\n";
+            cout << "\tandi t0, t0, 0xff\n";
             break;
         }
         // lhs < rhs
         case KOOPA_RBO_LT:{
-            cout << "\tslt t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-            
-            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            cout << "\tslt  t0, t0, t1\n";
+            cout << "\tandi t0, t0, 0xff\n";
             break;
         }
         // lhs >= rhs
         case KOOPA_RBO_GE:{
-            cout << "\tslt t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-            
-            cout << "\txori t" << now << ", t" << now << ", 1\n";
-            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            cout << "\tslt  t0, t0, t1\n";
+            cout << "\txori t0, t0, 1\n";
+            cout << "\tandi t0, t0, 0xff\n";
             break;
         }
         // lhs <= rhs
         case KOOPA_RBO_LE:{
-            cout << "\tsgt t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-            
-            cout << "\txori t" << now << ", t" << now << ", 1\n";
-            cout << "\tandi t" << now << ", t" << now << ", 0xff\n";
+            cout << "\tsgt  t0, t0, t1\n";
+            cout << "\txori t0, t0, 1\n";
+            cout << "\tandi t0, t0, 0xff\n";
             break;
         }
-
-
         // lhs + rhs
         case KOOPA_RBO_ADD:{
-            cout << "\tadd t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\tadd  t0, t0, t1\n";
             break;
         }
         // lhs - rhs
         case KOOPA_RBO_SUB:{
-            cout << "\tsub t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\tsub  t0, t0, t1\n";
             break;
         }
         // lhs * rhs
         case KOOPA_RBO_MUL:{
-            cout << "\tmul t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\tmul  t0, t0, t1\n";
             break;
         }
         // lhs / rhs
         case KOOPA_RBO_DIV:{
-            cout << "\tdiv t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\tdiv  t0, t0, t1\n";
             break;
         }
         // lhs % rhs
         case KOOPA_RBO_MOD:{
-            cout << "\trem t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\trem  t0, t0, t1\n";
             break;
         }
         // lhs & rhs
         case KOOPA_RBO_AND:{
-            cout << "\tand t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\tand  t0, t0, t1\n";
             break;
         }
         // lhs | rhs
         case KOOPA_RBO_OR:{
-            cout << "\tor t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\tor   t0, t0, t1\n";
             break;
         }
         // lhs ^ rhs
         case KOOPA_RBO_XOR:{
-            cout << "\txor t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\txor  t0, t0, t1\n";
             break;
         }
         // lhs << rhs
         case KOOPA_RBO_SHL:{
-            cout << "\tsll t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\tsll  t0, t0, t1\n";
             break;
         }
         // lhs >> rhs
         case KOOPA_RBO_SHR:{
-            cout << "\tsra t" << now << ", ";
-            if(lhs_is_integer) cout << "x0, ";
-            else cout << "t" << lhs_value << ", ";
-            if(rhs_is_integer) cout << "x0, ";
-            else cout << "t" << rhs_value << "\n";
-
+            cout << "\tsra  t0, t0, t1\n";
             break;
         }
         // 其他情况
@@ -434,5 +448,34 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
         }
     }
 
-    return now;
+    // 再将t0存入内存中
+    cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    use_stack += 4;
+    return use_stack - 4;
+}
+
+// 访问 return 指令 (tag = 16)
+int32_t Visit_Inst_Return(const koopa_raw_return_t &ret){
+    // printf("-----------Visit_Inst_Return---------------\n");
+
+    // return 指令中, value 代表返回值
+    koopa_raw_value_t ret_value = ret.value;
+    
+    // 将返回值放到a0中
+    switch (ret_value->kind.tag) {
+        // ret_value为intege, 则取出整数的值, 并将其存放在a0中, 然后返回
+        case KOOPA_RVT_INTEGER:{
+            cout << "\tli   a0, " << Visit_Inst_Integer(ret_value->kind.data.integer) << "\n";
+        }
+
+        // 其他情况下, 将内存中的值取出放到a0中, 然后返回
+        default:{
+            cout << "\tlw   a0, " << Visit_Inst(ret_value) << "(sp)\n";
+        }
+    }
+    // 恢复栈空间
+    cout << "\taddi sp, sp, " << use_stack << "\n"; 
+    cout << "\tret\n";
+    use_stack = 0;
+    return 0;
 }
