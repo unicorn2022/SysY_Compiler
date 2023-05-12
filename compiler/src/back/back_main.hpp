@@ -28,6 +28,8 @@ void Visit_Basic_Block(const koopa_raw_basic_block_t &bb);
 int32_t Visit_Inst(const koopa_raw_value_t &value);
 // 访问 integer 指令, 返回整数值 (tag = 0)
 int32_t Visit_Inst_Integer(const koopa_raw_integer_t &integer);
+// 访问 func_arg_ref 指令, 返回是第x个参数 (tag = 4)
+int32_t Visit_Inst_Func_Arg_Ref(const koopa_raw_func_arg_ref_t &func_arg_ref);
 // 访问 alloc 指令, 返回结果所在的sp+x (tag = 6)
 int32_t Visit_Inst_Alloc(const koopa_raw_type_t &alloc_type);
 // 访问 load 指令, 返回结果所在的sp+x (tag = 8)
@@ -40,5 +42,7 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary);
 int32_t Visit_Inst_Branch(const koopa_raw_branch_t &branch);
 // 访问 jump 指令 (tag = 14)
 int32_t Visit_Inst_Jump(const koopa_raw_jump_t &jump);
+// 访问 call 指令 (tag = 15)
+int32_t Visit_Inst_Call(const koopa_raw_call_t &call);
 // 访问 return 指令 (tag = 16)
 int32_t Visit_Inst_Return(const koopa_raw_return_t &ret);

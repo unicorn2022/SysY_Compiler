@@ -46,7 +46,6 @@ void GetKoopaIR(const char str[]){
     koopa_delete_raw_program_builder(builder);
 }
 
-
 // 访问 raw program
 void Visit_Program(const koopa_raw_program_t &program) {
     // printf("-----------Visit_Program---------------\n");
@@ -55,8 +54,6 @@ void Visit_Program(const koopa_raw_program_t &program) {
     Visit_Slice(program.values);
 
     // 执行一些其他的必要操作
-    cout << "\t.text\n";        // 声明之后的数据需要被放入代码段中
-    cout << "\t.globl main\n";  // 声明全局符号 main, 以便链接器处理
     
     // 访问所有函数
     Visit_Slice(program.funcs);
@@ -107,18 +104,22 @@ void Visit_Function(const koopa_raw_function_t &func) {
 
     // 输出当前函数的函数名, 标记当前函数的入口
     // 由于KoopaIR中函数名均为@name, 因此只需要输出name+1即可
+    cout << "\n";
+    cout << "\t.text\n";                            // 声明之后的数据需要被放入代码段中
+    cout << "\t.globl "<< func->name+1 << "\n";     // 将当前函数声明为全局函数, 以便链接器处理
     cout << func->name+1 << ":\n";
 
     // 计算当前函数指令可能用到的栈空间大小
-    int32_t need_stack = 0;
+    int32_t need_stack = 4; // 默认保留ra的值
     for (size_t i = 0; i < func->bbs.len; ++i) {
         // 当前func->bbs的内容
         auto ptr = func->bbs.buffer[i];
         // 计算该bbs需要的栈空间大小
         need_stack += Get_Basic_Block_Need_Stack(reinterpret_cast<koopa_raw_basic_block_t>(ptr));
     }
-    // 开辟栈空间
+    // 开辟栈空间, 保留ra的值到栈的最底部
     cout << "\taddi sp, sp, -" << need_stack << "\n";
+    cout << "\tsw ra, " << need_stack-4 << "(sp)\n";
 
     // 访问当前函数的所有参数
     // koopa_raw_slice_t params, 需要通过Slice进行进一步划分
@@ -167,8 +168,28 @@ int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
             }
             // 访问 load 指令 (tag = 8)
             case KOOPA_RVT_LOAD: { need_stack += 4; break; }            
-            // 访问双目运算符 (tag = 12)
-            case KOOPA_RVT_BINARY:{ need_stack += 4; break; }           
+            // 访问 binary 指令 (tag = 12)
+            case KOOPA_RVT_BINARY:{ need_stack += 4; break; }
+            // 访问 call 指令 (tag = 15)
+            case KOOPA_RVT_CALL:{ 
+                const koopa_raw_call_t &call = value->kind.data.call;
+                koopa_raw_function_t callee = call.callee;
+                const struct koopa_raw_type_kind * ret = callee->ty->data.function.ret;
+                koopa_raw_type_tag_t ret_type = ret->tag;
+                
+                if(ret_type == KOOPA_RTT_INT32){
+                    // 返回值为int32, 则需要将其保留到栈中
+                    need_stack += 4; 
+                } else if(ret_type == KOOPA_RTT_UNIT){
+                    // 返回值为void, 不需要将其保留到栈中
+                    need_stack += 0;
+                } else{
+                    // 其他类型
+                    printf("[Get_Basic_Block_Need_Stack] call return type = %d\n", ret_type);
+                    assert(0);
+                }
+                break; 
+            }       
             // 其他类型
             default:{ break; }
         }
@@ -213,14 +234,15 @@ int32_t Visit_Inst(const koopa_raw_value_t &value) {
 
     // 根据指令类型判断后续需要如何访问
     const auto &kind = value->kind;
-
-    // 输出一个换行, 将不同指令分开
-    cout << "\n";
     switch (kind.tag) {
         // 访问 integer 指令 (tag = 0)
         case KOOPA_RVT_INTEGER:{
             return inst_to_index[value] = Visit_Inst_Integer(kind.data.integer);
-        }        
+        }
+        // 访问 func_arg_ref 指令 (tag = 4)
+        case KOOPA_RVT_FUNC_ARG_REF:{
+            return inst_to_index[value] = Visit_Inst_Func_Arg_Ref(kind.data.func_arg_ref);
+        }
         // 访问 alloc 指令 (tag = 6)
         case KOOPA_RVT_ALLOC:{
             return inst_to_index[value] = Visit_Inst_Alloc(value->ty);
@@ -245,6 +267,10 @@ int32_t Visit_Inst(const koopa_raw_value_t &value) {
         case KOOPA_RVT_JUMP:{
             return inst_to_index[value] = Visit_Inst_Jump(kind.data.jump);
         }
+        // 访问 call 指令 (tag = 15)
+        case KOOPA_RVT_CALL:{
+            return inst_to_index[value] = Visit_Inst_Call(kind.data.call);
+        }
         // 访问 return 指令 (tag = 16)
         case KOOPA_RVT_RETURN:{
             return inst_to_index[value] = Visit_Inst_Return(kind.data.ret);
@@ -260,9 +286,21 @@ int32_t Visit_Inst(const koopa_raw_value_t &value) {
 
 // 访问 integer 指令, 返回整数值 (tag = 6)
 int32_t Visit_Inst_Integer(const koopa_raw_integer_t &integer){
-    // printf("-----------Visit_Inst_Integer: value = %d-----------\n", integer.value);
+    // printf("-----------Visit_Inst_Integer-----------\n");
     
     return integer.value;
+}
+
+// 访问 func_arg_ref 指令, 返回是第x个参数 (tag = 4)
+int32_t Visit_Inst_Func_Arg_Ref(const koopa_raw_func_arg_ref_t &func_arg_ref){
+    // printf("-----------Visit_Inst_Func_Arg_Ref-----------\n");
+    
+    if(func_arg_ref.index >= 8){
+        printf("[Visit_Inst_Func_Arg_Ref] index >= 8\n");
+        assert(0);
+    }
+
+    return func_arg_ref.index;
 }
 
 // 访问 alloc 指令, 返回结果所在的sp+x (tag = 6)
@@ -300,6 +338,7 @@ int32_t Visit_Inst_Load(const koopa_raw_load_t &load){
     cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
     // 再将t0存入内存中
     cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    cout << "\n";
     use_stack += 4;
     return use_stack - 4;
 }
@@ -311,17 +350,21 @@ int32_t Visit_Inst_Store(const koopa_raw_store_t &store){
     koopa_raw_value_t value = store.value;
     koopa_raw_value_t dest = store.dest;
 
-    // 待存储的value为整数指令, 将其li到t0中
+    // 将value的值存到t0中
     if(value->kind.tag == KOOPA_RVT_INTEGER){
+        // value为整数指令
         cout << "\tli   t0, " << Visit_Inst_Integer(value->kind.data.integer) << "\n"; 
-    }
-    // 待存储的value在内存中, 将其lw到t0中
-    else{
+    } else if(value->kind.tag == KOOPA_RVT_FUNC_ARG_REF){
+        // value为函数参数
+        cout << "\tmv   t0, a" << Visit_Inst_Func_Arg_Ref(value->kind.data.func_arg_ref) << "\n"; 
+    } else{
+        // value在内存中, 将其lw到t0中
         cout << "\tlw   t0, " << Visit_Inst(value) << "(sp)\n";
     }
 
     // 将value存储到内存中
     cout << "\tsw   t0, " << Visit_Inst(dest) << "(sp)\n";
+    cout << "\n";
     return 0;
 }
 
@@ -333,17 +376,24 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
     koopa_raw_value_t lhs = binary.lhs;
     koopa_raw_value_t rhs = binary.rhs;
 
-    // 将lhs的值保存在t0中, rhs的值保存在t1中
+    // 将lhs的值保存在t0中
     if(lhs->kind.tag == KOOPA_RVT_INTEGER){
         // lhs是整数指令
         cout << "\tli   t0, " << Visit_Inst_Integer(lhs->kind.data.integer) << "\n";
+    } else if(lhs->kind.tag == KOOPA_RVT_FUNC_ARG_REF){
+        // lhs是函数参数
+        cout << "\tmv   t0, a" << Visit_Inst_Func_Arg_Ref(lhs->kind.data.func_arg_ref) << "\n";
     } else{
         // 不是整数指令, 则变量一定在内存中
         cout << "\tlw   t0, " << Visit_Inst(lhs) << "(sp)\n";
     }
+    // 将rhs的值保存在t1中
     if(rhs->kind.tag == KOOPA_RVT_INTEGER){
         // rhs是整数指令
         cout << "\tli   t1, " << Visit_Inst_Integer(rhs->kind.data.integer) << "\n";
+    } else if(rhs->kind.tag == KOOPA_RVT_FUNC_ARG_REF){
+        // rhs是函数参数
+        cout << "\tmv   t1, a" << Visit_Inst_Func_Arg_Ref(rhs->kind.data.func_arg_ref) << "\n";
     } else{
         // 不是整数指令, 则变量一定在内存中
         cout << "\tlw   t1, " << Visit_Inst(rhs) << "(sp)\n";
@@ -453,6 +503,7 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
 
     // 再将t0存入内存中
     cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    cout << "\n";
     use_stack += 4;
     return use_stack - 4;
 }
@@ -471,6 +522,9 @@ int32_t Visit_Inst_Branch(const koopa_raw_branch_t &branch){
     if(cond->kind.tag == KOOPA_RVT_INTEGER){
         // cond是整数指令
         cout << "\tli   t0, " << Visit_Inst_Integer(cond->kind.data.integer) << "\n";
+    } else if(cond->kind.tag == KOOPA_RVT_FUNC_ARG_REF){
+        // cond是函数参数
+        cout << "\tmv   t0, a" << Visit_Inst_Func_Arg_Ref(cond->kind.data.func_arg_ref) << "\n"; 
     } else{
         // 不是整数指令, 则变量一定在内存中
         cout << "\tlw   t0, " << Visit_Inst(cond) << "(sp)\n";
@@ -479,9 +533,9 @@ int32_t Visit_Inst_Branch(const koopa_raw_branch_t &branch){
     // 输出条件跳转语句
     cout << "\tbnez t0, " << true_bb->name + 1 << "\n";
     cout << "\tj    " << false_bb->name + 1 << "\n";
+    cout << "\n";
     return 0;
 }
-
 
 // 访问 jump 指令 (tag = 14)
 int32_t Visit_Inst_Jump(const koopa_raw_jump_t &jump){
@@ -491,7 +545,71 @@ int32_t Visit_Inst_Jump(const koopa_raw_jump_t &jump){
 	// koopa_raw_slice_t args = jump.args;
 
     cout << "\tj    " << target_bb->name + 1 << "\n";
+    cout << "\n";
     return 0;
+}
+
+// 访问 call 指令 (tag = 15)
+int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
+    // printf("-----------Visit_Inst_Call ----------\n");
+
+	koopa_raw_function_t callee = call.callee;
+	koopa_raw_slice_t args = call.args;
+    const struct koopa_raw_type_kind * ret = callee->ty->data.function.ret;
+    koopa_raw_type_tag_t ret_type = ret->tag;
+    // printf("return value type = %d\n", ret_type);
+
+    bool need_reload[10] = {0};
+
+    for (size_t i = 0; i < args.len; ++i) {
+        if(i >= 8) {
+            printf("[Visit_Inst_Call] arg count >= 8\n");
+            assert(0);
+        }
+        // 当前args的内容
+        auto ptr = args.buffer[i];
+        
+        // 当前args的类型为value(即指令)
+        if (args.kind == KOOPA_RSIK_VALUE) {
+            koopa_raw_value_t value = reinterpret_cast<koopa_raw_value_t>(ptr);
+            // 将value放入ai寄存器中
+            if(value->kind.tag == KOOPA_RVT_INTEGER){
+                // value是整数指令
+                cout << "\tli   a" << i <<  ", " << Visit_Inst_Integer(value->kind.data.integer) << "\n";
+            } else if(value->kind.tag == KOOPA_RVT_FUNC_ARG_REF){
+                // value是函数参数, 需要临时保存到s寄存器中
+                int index = Visit_Inst_Func_Arg_Ref(value->kind.data.func_arg_ref);
+                need_reload[index] = true;
+                // 把a[index]保存到s[index]中
+                cout << "\tmv   s" << index << ", a" << index << "\n";
+                cout << "\tmv   a" << i <<  ", a" << index << "\n"; 
+            } else{
+                // 其他情况, value一定在内存中
+                cout << "\tlw   a" << i <<  ", " << Visit_Inst(value) << "(sp)\n";
+            }
+        }
+        // 当前args的类型为其他情况
+        else{
+            printf("[Visit_Inst_Call]: args.kind = %d\n", args.kind);
+            assert(false);
+        }
+    }
+
+    // 调用函数
+    cout << "\tcall " << callee->name+1 << "\n";
+    
+    // 返回值为int32时, 需要保留返回值到栈中
+    if(ret_type == KOOPA_RTT_INT32){
+        cout << "\tsw   a0, " << use_stack << "(sp)\n";
+        use_stack += 4; 
+    }
+
+    // 恢复函数参数
+    for(int i = 0; i < 8; i++)
+        if(need_reload[i])
+            cout << "\tmv   a" << i << ", s" << i << "\n";
+    cout << "\n";
+    return ret_type == KOOPA_RTT_INT32 ? 0 : use_stack-4;
 }
 
 // 访问 return 指令 (tag = 16)
@@ -502,21 +620,27 @@ int32_t Visit_Inst_Return(const koopa_raw_return_t &ret){
     koopa_raw_value_t ret_value = ret.value;
     
     // 将返回值放到a0中
-    switch (ret_value->kind.tag) {
-        // ret_value为intege, 则取出整数的值, 并将其存放在a0中, 然后返回
-        case KOOPA_RVT_INTEGER:{
+    if(ret_value != NULL){
+        if(ret_value->kind.tag == KOOPA_RVT_INTEGER){
+            // ret_value为整数指令
             cout << "\tli   a0, " << Visit_Inst_Integer(ret_value->kind.data.integer) << "\n";
-            break;
-        }
-
-        // 其他情况下, 将内存中的值取出放到a0中, 然后返回
-        default:{
+        } else if(ret_value->kind.tag == KOOPA_RVT_FUNC_ARG_REF){
+            // ret_value是函数参数
+            cout << "\tmv   a0, a" << Visit_Inst_Func_Arg_Ref(ret_value->kind.data.func_arg_ref) << "\n"; 
+        } else{
+            // 其他情况
             cout << "\tlw   a0, " << Visit_Inst(ret_value) << "(sp)\n";
         }
     }
+
+    // 取出返回地址
+    cout << "\tlw   ra, " << use_stack << "(sp)\n";
     // 恢复栈空间
-    cout << "\taddi sp, sp, " << use_stack << "\n"; 
+    use_stack += 4;
+    cout << "\taddi sp, sp, " << use_stack << "\n";
+    // 返回
     cout << "\tret\n";
+    cout << "\n";
     use_stack = 0;
     return 0;
 }
