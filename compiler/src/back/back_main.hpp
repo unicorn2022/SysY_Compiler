@@ -36,5 +36,9 @@ int32_t Visit_Inst_Load(const koopa_raw_load_t &load);
 int32_t Visit_Inst_Store(const koopa_raw_store_t &store);
 // 访问 binary 指令, 返回结果所在的sp+x (tag = 12)
 int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary);
+// 访问 branch 指令 (tag = 13)
+int32_t Visit_Inst_Branch(const koopa_raw_branch_t &branch);
+// 访问 jump 指令 (tag = 14)
+int32_t Visit_Inst_Jump(const koopa_raw_jump_t &jump);
 // 访问 return 指令 (tag = 16)
 int32_t Visit_Inst_Return(const koopa_raw_return_t &ret);

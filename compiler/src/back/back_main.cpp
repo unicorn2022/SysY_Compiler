@@ -208,8 +208,8 @@ int32_t use_stack = 0;
 // 访问指令
 int32_t Visit_Inst(const koopa_raw_value_t &value) {
     if(inst_to_index.find(value) != inst_to_index.end()) return inst_to_index[value];
-    // printf("-----------Visit_Inst, addr = %x---------------\n", value);
 
+    // printf("-----------Visit_Inst, addr = %llx---------------\n", (unsigned long long)value);
 
     // 根据指令类型判断后续需要如何访问
     const auto &kind = value->kind;
@@ -220,28 +220,31 @@ int32_t Visit_Inst(const koopa_raw_value_t &value) {
         // 访问 integer 指令 (tag = 0)
         case KOOPA_RVT_INTEGER:{
             return inst_to_index[value] = Visit_Inst_Integer(kind.data.integer);
-        }
-        
+        }        
         // 访问 alloc 指令 (tag = 6)
         case KOOPA_RVT_ALLOC:{
             return inst_to_index[value] = Visit_Inst_Alloc(value->ty);
         }
-
         // 访问 load 指令 (tag = 8)
         case KOOPA_RVT_LOAD:{
             return inst_to_index[value] = Visit_Inst_Load(kind.data.load);
         }
-
         // 访问 store 指令 (tag = 9)
         case KOOPA_RVT_STORE:{
             return inst_to_index[value] = Visit_Inst_Store(kind.data.store);
         }
-        
-        // 访问双目运算符 (tag = 12)
+        // 访问 binary 指令 (tag = 12)
         case KOOPA_RVT_BINARY:{
             return inst_to_index[value] = Visit_Inst_Binary(kind.data.binary);
         }
-
+        // 访问 branch 指令 (tag = 13)
+        case KOOPA_RVT_BRANCH:{
+            return inst_to_index[value] = Visit_Inst_Branch(kind.data.branch);
+        }
+        // 访问 jump 指令 (tag = 14)
+        case KOOPA_RVT_JUMP:{
+            return inst_to_index[value] = Visit_Inst_Jump(kind.data.jump);
+        }
         // 访问 return 指令 (tag = 16)
         case KOOPA_RVT_RETURN:{
             return inst_to_index[value] = Visit_Inst_Return(kind.data.ret);
@@ -258,6 +261,7 @@ int32_t Visit_Inst(const koopa_raw_value_t &value) {
 // 访问 integer 指令, 返回整数值 (tag = 6)
 int32_t Visit_Inst_Integer(const koopa_raw_integer_t &integer){
     // printf("-----------Visit_Inst_Integer: value = %d-----------\n", integer.value);
+    
     return integer.value;
 }
 
@@ -308,7 +312,6 @@ int32_t Visit_Inst_Store(const koopa_raw_store_t &store){
     koopa_raw_value_t dest = store.dest;
 
     // 待存储的value为整数指令, 将其li到t0中
-    int32_t value_data = 0;
     if(value->kind.tag == KOOPA_RVT_INTEGER){
         cout << "\tli   t0, " << Visit_Inst_Integer(value->kind.data.integer) << "\n"; 
     }
@@ -452,6 +455,43 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
     cout << "\tsw   t0, " << use_stack << "(sp)\n";
     use_stack += 4;
     return use_stack - 4;
+}
+
+// 访问 branch 指令 (tag = 13)
+int32_t Visit_Inst_Branch(const koopa_raw_branch_t &branch){
+    // printf("-----------Visit_Inst_Branch-----------\n");
+    
+    koopa_raw_value_t cond = branch.cond;
+    koopa_raw_basic_block_t true_bb = branch.true_bb;
+    koopa_raw_basic_block_t false_bb = branch.false_bb;
+    // koopa_raw_slice_t true_args = branch.true_args;
+	// koopa_raw_slice_t false_args = branch.false_args;
+
+    // 取出条件对应的值, 存到t0中
+    if(cond->kind.tag == KOOPA_RVT_INTEGER){
+        // cond是整数指令
+        cout << "\tli   t0, " << Visit_Inst_Integer(cond->kind.data.integer) << "\n";
+    } else{
+        // 不是整数指令, 则变量一定在内存中
+        cout << "\tlw   t0, " << Visit_Inst(cond) << "(sp)\n";
+    }
+
+    // 输出条件跳转语句
+    cout << "\tbnez t0, " << true_bb->name + 1 << "\n";
+    cout << "\tj    " << false_bb->name + 1 << "\n";
+    return 0;
+}
+
+
+// 访问 jump 指令 (tag = 14)
+int32_t Visit_Inst_Jump(const koopa_raw_jump_t &jump){
+    // printf("-----------Visit_Inst_Jump-----------\n");
+
+    koopa_raw_basic_block_t target_bb = jump.target;
+	// koopa_raw_slice_t args = jump.args;
+
+    cout << "\tj    " << target_bb->name + 1 << "\n";
+    return 0;
 }
 
 // 访问 return 指令 (tag = 16)
