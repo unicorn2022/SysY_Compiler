@@ -102,6 +102,9 @@ void Visit_Slice(const koopa_raw_slice_t &slice) {
 void Visit_Function(const koopa_raw_function_t &func) {
     // printf("-----------Visit_Function---------------\n");
 
+    // 如果是函数声明, 则对应bbs.len为0, 应该跳过
+    if(func->bbs.len == 0) return;
+
     // 输出当前函数的函数名, 标记当前函数的入口
     // 由于KoopaIR中函数名均为@name, 因此只需要输出name+1即可
     cout << "\n";
