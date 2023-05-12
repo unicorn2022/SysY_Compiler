@@ -250,6 +250,10 @@ int32_t Visit_Inst(const koopa_raw_value_t &value) {
         case KOOPA_RVT_ALLOC:{
             return inst_to_index[value] = Visit_Inst_Alloc(value->ty);
         }
+        // 访问 global_alloc 指令 (tag = 7)
+        case KOOPA_RVT_GLOBAL_ALLOC:{
+            return inst_to_index[value] = Visit_Inst_Global_Alloc(kind.data.global_alloc, value->name+1);
+        }
         // 访问 load 指令 (tag = 8)
         case KOOPA_RVT_LOAD:{
             return inst_to_index[value] = Visit_Inst_Load(kind.data.load);
@@ -332,13 +336,60 @@ int32_t Visit_Inst_Alloc(const koopa_raw_type_t &alloc_type){
     return 0;
 }
 
+// 访问 global_alloc 指令 (tag = 7)
+int32_t Visit_Inst_Global_Alloc(const koopa_raw_global_alloc_t &global_alloc, const char* name){
+    // printf("----------- Visit_Inst_Global_Alloc -----------\n");
+
+    cout << "\t.data\n";
+    koopa_raw_value_t init = global_alloc.init;
+
+    // 变量的类型
+    koopa_raw_type_t ty = init->ty;
+
+    // 变量的名称
+    cout << "\t.global " << name << "\n";
+    cout << name << ":\n";
+    
+    // 初始化的值
+    koopa_raw_value_kind_t kind = init->kind;
+    switch(kind.tag){
+        // 通过一个整数初始化
+        case KOOPA_RVT_INTEGER:{
+            cout << "\t.word " << Visit_Inst_Integer(kind.data.integer) << "\n";
+            break;
+        }
+        // 通过Zero initializer初始化
+        case KOOPA_RVT_ZERO_INIT:{
+            if(ty->tag == KOOPA_RTT_INT32){
+                // 变量为int32类型
+                cout << "\t.zero 4" << "\n";
+            }else{
+                printf("[Visit_Inst_Global_Alloc] ty->tag = %d\n", ty->tag);
+                assert(0);
+            }
+            break; 
+        }
+        default:{
+            break;
+        }
+    }
+    return 0;    
+}
+
 // 访问 load 指令, 返回结果所在的sp+x (tag = 8)
 int32_t Visit_Inst_Load(const koopa_raw_load_t &load){
     // printf("-----------Visit_Inst_Load-----------\n");
 
     // 先将地址对应的值读取到t0中
     koopa_raw_value_t src = load.src;
-    cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+    if(src->kind.tag == KOOPA_RVT_GLOBAL_ALLOC){
+        // 读取全局变量
+        cout << "\tla   t0, " << src->name+1 << "\n";
+        cout << "\tlw   t0, 0(t0)\n";
+    }else{
+        // 读取局部变量
+        cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+    }
     // 再将t0存入内存中
     cout << "\tsw   t0, " << use_stack << "(sp)\n";
     cout << "\n";

@@ -32,6 +32,8 @@ int32_t Visit_Inst_Integer(const koopa_raw_integer_t &integer);
 int32_t Visit_Inst_Func_Arg_Ref(const koopa_raw_func_arg_ref_t &func_arg_ref);
 // 访问 alloc 指令, 返回结果所在的sp+x (tag = 6)
 int32_t Visit_Inst_Alloc(const koopa_raw_type_t &alloc_type);
+// 访问 global_alloc 指令 (tag = 7)
+int32_t Visit_Inst_Global_Alloc(const koopa_raw_global_alloc_t &global_alloc, const char* name);
 // 访问 load 指令, 返回结果所在的sp+x (tag = 8)
 int32_t Visit_Inst_Load(const koopa_raw_load_t &load);
 // 访问 store 指令 (tag = 9)
