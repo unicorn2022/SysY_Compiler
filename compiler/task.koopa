@@ -1,22 +1,13 @@
-global @x = alloc [i32, 2], zeroinit
+global @x = alloc [[i32, 2], 3], zeroinit
+global @xx = alloc [[i32, 2], 3], {{1,2}, {3,4}, {5,6}}
+global @xxx = alloc [i32, 5], {1, 2, 3, 4, 5}
 
 fun @main(): i32 {
 %entry:
-	@arr = alloc [i32, 5]
+	@arr = alloc [[i32, 3], 2]    // @arr 的类型是 *[[i32, 3], 2]
+	%ptr1 = getelemptr @arr, 1    // %ptr1 的类型是 *[i32, 3]
+	%ptr2 = getelemptr %ptr1, 2   // %ptr2 的类型是 *i32
+	%value = load %ptr2           // %value 的类型是 i32
 
-	// arr 的初始化列表, 别忘了补 0 这个事
-	%0 = getelemptr @arr, 0
-	store 1, %0
-	%1 = getelemptr @arr, 1
-	store 2, %1
-	%2 = getelemptr @arr, 2
-	store 3, %2
-	%3 = getelemptr @arr, 3
-	store 0, %3
-	%4 = getelemptr @arr, 4
-	store 0, %4
-
-	%5 = getelemptr @arr, 2
-	%6 = load %5
-	ret %6
+	ret 0
 }

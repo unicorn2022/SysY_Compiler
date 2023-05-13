@@ -9,7 +9,7 @@
 #include "back_main.hpp"
 using namespace std;
 
-#define cout fout
+// #define cout fout
 
 ofstream fout;
 
@@ -150,6 +150,25 @@ void Visit_Function(const koopa_raw_function_t &func) {
     // koopa_raw_type_t Return_Type = func->ty
 }
 
+// 获取数组的长度
+int32_t Get_Array_Len(const struct koopa_raw_type_kind* base){
+    // 是一个指针, 找到指针对应的类型进行计算
+    if(base->tag == KOOPA_RTT_POINTER){
+        base = base->data.pointer.base;
+        // 通过指针获取数组长度, 目前是要去掉最外面的一维
+        if(base->tag == KOOPA_RTT_ARRAY){
+            base = base->data.array.base;
+        }
+    }
+    int32_t len = 1;
+    // 多维数组
+    while(base->tag == KOOPA_RTT_ARRAY){
+        len *= base->data.array.len;
+        base = base->data.array.base;
+    }
+    return len;
+}
+
 // 遍历当前函数的所有指令, 计算当前函数可能用到的栈空间大小
 int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
     int32_t need_stack = 0;
@@ -173,7 +192,8 @@ int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
                         }
                         else if(base->tag == KOOPA_RTT_ARRAY){
                             // 数组, 默认为int32数组, 需要的空间为4*len
-                            need_stack += base->data.array.len * 4;
+                            int32_t len = Get_Array_Len(base);
+                            need_stack += len * 4;
                         }
                         else{
                             printf("Get_Basic_Block_Need_Stack: base.tag = %d\n", base->tag);
@@ -387,9 +407,10 @@ int32_t Visit_Inst_Alloc(const koopa_raw_type_t &alloc_type){
                 use_stack += 4;
                 return now_stack;
             } else if(base->tag == KOOPA_RTT_ARRAY){
-                // int32数组, 占用空间 4*len
+                // 变量为int32数组, 占用空间 4*len
+                int32_t len = Get_Array_Len(base);
                 int32_t now_stack = use_stack;
-                use_stack += base->data.array.len * 4;
+                use_stack += len * 4;
                 return now_stack;
             } else{
                 printf("Visit_Inst_Alloc: base.tag = %d\n", base->tag);
@@ -402,7 +423,6 @@ int32_t Visit_Inst_Alloc(const koopa_raw_type_t &alloc_type){
             assert(false);
         }
     }
-    return 0;
 }
 
 // 访问 global_alloc 指令 (tag = 7)
@@ -434,7 +454,8 @@ int32_t Visit_Inst_Global_Alloc(const koopa_raw_global_alloc_t &global_alloc, co
                 cout << "\t.zero 4" << "\n";
             }else if(ty->tag == KOOPA_RTT_ARRAY){
                 // 变量为int32数组
-                cout << "\t.zero " << 4 * ty->data.array.len << "\n";
+                int32_t len = Get_Array_Len(ty);
+                cout << "\t.zero " << 4 * len << "\n";
             } else{
                 printf("[Visit_Inst_Global_Alloc] ty->tag = %d\n", ty->tag);
                 assert(0);
@@ -535,7 +556,7 @@ int32_t Visit_Inst_Elem_Ptr(const koopa_raw_get_elem_ptr_t &get_elem_ptr){
     cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
     // 计算 get_elemptr 的偏移量
     cout << "\tli   t1, " << Visit_Inst(index) << "\n";
-    cout << "\tli   t2, 4\n";
+    cout << "\tli   t2, " << Get_Array_Len(src->ty) * 4 << "\n";
     cout << "\tmul  t1, t1, t2\n";
     // 计算 get_elemptr 的结果, 是一个指针
     cout << "\tadd  t0, t0, t1\n";
