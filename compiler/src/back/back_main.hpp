@@ -40,6 +40,8 @@ int32_t Visit_Inst_Global_Alloc(const koopa_raw_global_alloc_t &global_alloc, co
 int32_t Visit_Inst_Load(const koopa_raw_load_t &load);
 // 访问 store 指令 (tag = 9)
 int32_t Visit_Inst_Store(const koopa_raw_store_t &store);
+// 访问 get_pointer 指令, 返回结果所在的sp+x (tag = 10)
+int32_t Visit_Inst_Get_Ptr(const koopa_raw_get_ptr_t &get_ptr);
 // 访问 element_pointer 指令 (tag = 11)
 int32_t Visit_Inst_Elem_Ptr(const koopa_raw_get_elem_ptr_t &get_elem_ptr);
 // 访问 binary 指令, 返回结果所在的sp+x (tag = 12)

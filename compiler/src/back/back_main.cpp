@@ -9,7 +9,7 @@
 #include "back_main.hpp"
 using namespace std;
 
-// #define cout fout
+#define cout fout
 
 ofstream fout;
 
@@ -169,6 +169,18 @@ int32_t Get_Array_Len(const struct koopa_raw_type_kind* base){
     return len;
 }
 
+// 获取指针指向的内容的基础长度
+int32_t Get_Pointer_Len(const struct koopa_raw_type_kind* base){
+    // 是一个指针, 找到指针对应的类型进行计算
+    if(base->tag == KOOPA_RTT_POINTER){
+        base = base->data.pointer.base;
+        return Get_Array_Len(base);
+    }else{
+        printf("[Get_Pointer_Len] base is not a pointer\n");
+        assert(0);
+    }
+}
+
 // 遍历当前函数的所有指令, 计算当前函数可能用到的栈空间大小
 int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
     int32_t need_stack = 0;
@@ -194,9 +206,11 @@ int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
                             // 数组, 默认为int32数组, 需要的空间为4*len
                             int32_t len = Get_Array_Len(base);
                             need_stack += len * 4;
-                        }
-                        else{
-                            printf("Get_Basic_Block_Need_Stack: base.tag = %d\n", base->tag);
+                        } else if(base->tag == KOOPA_RTT_POINTER){
+                            // 指针, 即指向数组的指针
+                            need_stack += 4;
+                        } else{
+                            printf("Get_Basic_Block_Need_Stack:[No.%zu] base.tag = %d\n", i, base->tag);
                             assert(false);
                         }
                         break;
@@ -210,7 +224,9 @@ int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
             }
             // 访问 load 指令 (tag = 8)
             case KOOPA_RVT_LOAD: { need_stack += 4; break; }   
-            // 访问 element_pointer 指令 (tag = 8)
+            // 访问 get_pointer 指令 (tag = 10)
+            case KOOPA_RVT_GET_PTR: { need_stack += 4; break; } 
+            // 访问 element_pointer 指令 (tag = 11)
             case KOOPA_RVT_GET_ELEM_PTR: { need_stack += 4; break; }  
             // 访问 binary 指令 (tag = 12)
             case KOOPA_RVT_BINARY:{ need_stack += 4; break; }
@@ -304,6 +320,10 @@ int32_t Visit_Inst(const koopa_raw_value_t &value) {
         // 访问 store 指令 (tag = 9)
         case KOOPA_RVT_STORE:{
             return inst_to_index[value] = Visit_Inst_Store(kind.data.store);
+        }
+        // 访问 get_pointer 指令 (tag = 10)
+        case KOOPA_RVT_GET_PTR:{
+            return inst_to_index[value] = Visit_Inst_Get_Ptr(kind.data.get_ptr);
         }
         // 访问 element_pointer 指令 (tag = 11)
         case KOOPA_RVT_GET_ELEM_PTR:{
@@ -412,6 +432,11 @@ int32_t Visit_Inst_Alloc(const koopa_raw_type_t &alloc_type){
                 int32_t now_stack = use_stack;
                 use_stack += len * 4;
                 return now_stack;
+            } else if(base->tag == KOOPA_RTT_POINTER){
+                // 指针, 占用空间 4
+                int32_t now_stack = use_stack;
+                use_stack += 4;
+                return now_stack;
             } else{
                 printf("Visit_Inst_Alloc: base.tag = %d\n", base->tag);
                 assert(false);
@@ -484,14 +509,18 @@ int32_t Visit_Inst_Load(const koopa_raw_load_t &load){
     // 先将地址对应的值读取到t0中
     koopa_raw_value_t src = load.src;
     if(src->kind.tag == KOOPA_RVT_GLOBAL_ALLOC){
-        // 全局变量
+        // 全局变量的地址
         cout << "\tla   t0, " << src->name+1 << "\n";
         cout << "\tlw   t0, 0(t0)\n";
     } else if(src->kind.tag == KOOPA_RVT_ALLOC){
-        // 局部变量
+        // 局部变量的地址
         cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+    } else if(src->kind.tag == KOOPA_RVT_GET_PTR){
+        // 指针指向的地址
+        cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+        cout << "\tlw   t0, 0(t0)\n";
     } else if(src->kind.tag == KOOPA_RVT_GET_ELEM_PTR){
-        // 指针
+        // 数组
         cout << "\tlw   t1, " << Visit_Inst(src) << "(sp)\n";
         cout << "\tlw   t0, 0(t1)\n";
     } else{
@@ -527,14 +556,18 @@ int32_t Visit_Inst_Store(const koopa_raw_store_t &store){
 
     // 将 t0 存到 dest 的位置
     if(dest->kind.tag == KOOPA_RVT_GLOBAL_ALLOC){
-        // 全局变量
+        // 全局变量的地址
         cout << "\tla   t0, " << dest->name+1 << "\n";
         cout << "\tsw   t0, 0(t0)\n";
     } else if(dest->kind.tag == KOOPA_RVT_ALLOC){
-        // 局部变量
+        // 局部变量的地址
         cout << "\tsw   t0, " << Visit_Inst(dest) << "(sp)\n";
+    } else if(dest->kind.tag == KOOPA_RVT_GET_PTR){
+        // 指针指向的地址
+        cout << "\tlw   t0, " << Visit_Inst(dest) << "(sp)\n";
+        cout << "\tsw   t0, 0(t0)\n";
     } else if(dest->kind.tag == KOOPA_RVT_GET_ELEM_PTR){
-        // 指针
+        // 数组
         cout << "\tlw   t1, " << Visit_Inst(dest) << "(sp)\n";
         cout << "\tsw   t0, 0(t1)\n";
     } else{
@@ -543,6 +576,31 @@ int32_t Visit_Inst_Store(const koopa_raw_store_t &store){
     }
     cout << "\n";
     return 0;
+}
+
+// 访问 get_pointer 指令, 返回结果所在的sp+x  (tag = 10)
+int32_t Visit_Inst_Get_Ptr(const koopa_raw_get_ptr_t &get_ptr){
+    // printf("-----------Visit_Inst_Get_Ptr-----------\n");
+
+	koopa_raw_value_t src = get_ptr.src;        // src是指针类型
+	koopa_raw_value_t index = get_ptr.index;    // index是int32
+
+    // 计算指针指向的类型的大小
+    int32_t len = Get_Pointer_Len(src->ty);
+
+    // src
+    cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+    // index * len
+    cout << "\tli   t1, " << Visit_Inst(index) << "\n";
+    cout << "\tli   t2, " << len * 4 << "\n";
+    cout << "\tmul  t1, t1, t2\n";
+    // get_ptr的结果为: src + index * len
+    cout << "\tadd  t0, t0, t1\n";
+    // 再将t0存入内存中
+    cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    cout << "\n";
+    use_stack += 4;
+    return use_stack - 4;
 }
 
 // 访问 element_pointer 指令 (tag = 11)
