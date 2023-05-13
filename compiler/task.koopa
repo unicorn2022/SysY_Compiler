@@ -1,8 +1,21 @@
-global @var = alloc i32, zeroinit
+global @x = alloc [i32, 2], {10, 20}
 
 fun @main(): i32 {
 %entry:
-	%0 = load @var
-	%1 = add %0, 1
-	ret %1
+	@arr = alloc [i32, 5]
+	// arr 的初始化列表, 别忘了补 0 这个事
+	%0 = getelemptr @arr, 0
+	store 1, %0
+	%1 = getelemptr @arr, 1
+	store 2, %1
+	%2 = getelemptr @arr, 2
+	store 3, %2
+	%3 = getelemptr @arr, 3
+	store 0, %3
+	%4 = getelemptr @arr, 4
+	store 0, %4
+
+	%5 = getelemptr @arr, 2
+	%6 = load %5
+	ret %6
 }
