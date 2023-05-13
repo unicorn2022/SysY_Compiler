@@ -1,8 +1,9 @@
-global @x = alloc [i32, 2], {10, 20}
+global @x = alloc [i32, 2], zeroinit
 
 fun @main(): i32 {
 %entry:
 	@arr = alloc [i32, 5]
+
 	// arr 的初始化列表, 别忘了补 0 这个事
 	%0 = getelemptr @arr, 0
 	store 1, %0

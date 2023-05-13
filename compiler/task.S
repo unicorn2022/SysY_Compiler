@@ -1,8 +1,7 @@
 	.data
 	.global x
 x:
-	.word 10
-	.word 20
+	.zero 8
 
 
 	.text

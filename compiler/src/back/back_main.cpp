@@ -9,14 +9,20 @@
 #include "back_main.hpp"
 using namespace std;
 
+#define cout fout
+
+ofstream fout;
+
 void back_main(const char input[], const char output[]){
-    freopen(output, "w", stdout);
+    // freopen(output, "w", stdout);
 
     // 从input中读取IR树
     ifstream fin(input);
     std::istreambuf_iterator<char> beg(fin), end;
     std::string IRTree(beg, end);
-    
+    fout = ofstream(output);
+
+
     // 解析KoopaIR
     GetKoopaIR(IRTree.c_str());
 }
@@ -426,7 +432,10 @@ int32_t Visit_Inst_Global_Alloc(const koopa_raw_global_alloc_t &global_alloc, co
             if(ty->tag == KOOPA_RTT_INT32){
                 // 变量为int32类型
                 cout << "\t.zero 4" << "\n";
-            }else{
+            }else if(ty->tag == KOOPA_RTT_ARRAY){
+                // 变量为int32数组
+                cout << "\t.zero " << 4 * ty->data.array.len << "\n";
+            } else{
                 printf("[Visit_Inst_Global_Alloc] ty->tag = %d\n", ty->tag);
                 assert(0);
             }
