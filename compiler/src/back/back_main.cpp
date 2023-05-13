@@ -554,6 +554,8 @@ int32_t Visit_Inst_Elem_Ptr(const koopa_raw_get_elem_ptr_t &get_elem_ptr){
 
     // 计算数组的地址
     cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
+
+
     // 计算 get_elemptr 的偏移量
     cout << "\tli   t1, " << Visit_Inst(index) << "\n";
     cout << "\tli   t2, " << Get_Array_Len(src->ty) * 4 << "\n";
