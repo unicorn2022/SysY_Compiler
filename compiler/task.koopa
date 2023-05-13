@@ -1,22 +1,11 @@
-fun @f(@arr: *i32): i32 {
-%entry:
-	%arr = alloc *i32
-	store @arr, %arr
-	%0 = load %arr
-	%1 = getptr %0, 1
-	%2 = load %1
-	ret %2
-}
+global @x = alloc [[i32, 3], 2], {{1, 2, 3}, {4, 5, 6}}
 
 fun @main(): i32 {
 %entry:
-	@arr = alloc [i32, 2]
-	%0 = getelemptr @arr, 0
-	store 1, %0
-	%1 = getelemptr @arr, 1
-	store 2, %1
-	// 传递数组参数相当于传递其第一个元素的地址
-	%2 = getelemptr @arr, 0
-	%3 = call @f(%2)
-	ret %3
+	@arr = alloc [i32, 3]         // @arr 的类型是 **i32
+	// %ptr1 = load @arr         // %ptr1 的类型是 *i32
+	%ptr2 = getptr @arr, 1   // %ptr2 的类型是 *i32
+	%value = load %ptr2       // %value 的类型是 i32
+	// 这是一段类型和功能都正确的 Koopa IR 代码
+	ret 0
 }

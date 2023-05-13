@@ -9,7 +9,7 @@
 #include "back_main.hpp"
 using namespace std;
 
-#define cout fout
+// #define cout fout
 
 ofstream fout;
 
@@ -589,7 +589,20 @@ int32_t Visit_Inst_Get_Ptr(const koopa_raw_get_ptr_t &get_ptr){
     int32_t len = Get_Pointer_Len(src->ty);
 
     // src
-    cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+    // 判断指针指向的是谁
+    if(src->kind.tag == KOOPA_RVT_GLOBAL_ALLOC){
+        // 全局数组
+        cout << "\tla   t0, " << src->name+1 << "\n";
+    } else if(src->kind.tag == KOOPA_RVT_ALLOC){
+        // 局部数组
+        cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
+    } else{
+        // 局部变量
+        cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+        // printf("[Visit_Inst_Elem_Ptr] src->kind.tag = %d", src->kind.tag);
+        // assert(0);
+    }
+    
     // index * len
     cout << "\tli   t1, " << Visit_Inst(index) << "\n";
     cout << "\tli   t2, " << len * 4 << "\n";
@@ -611,7 +624,16 @@ int32_t Visit_Inst_Elem_Ptr(const koopa_raw_get_elem_ptr_t &get_elem_ptr){
 	koopa_raw_value_t index = get_elem_ptr.index;
 
     // 计算数组的地址
-    cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
+    if(src->kind.tag == KOOPA_RVT_GLOBAL_ALLOC){
+        // 全局数组
+        cout << "\tla   t0, " << src->name+1 << "\n";
+    } else if(src->kind.tag == KOOPA_RVT_ALLOC){
+        // 局部数组
+        cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
+    } else{
+        printf("[Visit_Inst_Elem_Ptr] src->kind.tag = %d", src->kind.tag);
+        assert(0);
+    }
 
 
     // 计算 get_elemptr 的偏移量
