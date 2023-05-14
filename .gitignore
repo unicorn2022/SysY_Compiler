@@ -1,1 +1,5 @@
 temp/
+
+# VSCode 相关文件
+/.vscode/
+*.code-workspace
