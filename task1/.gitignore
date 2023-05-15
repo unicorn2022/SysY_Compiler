@@ -1,0 +1,4 @@
+.vs/
+x64/
+!x64/Release/quicksort-win-amd64.exe
+!x64/Release/task1.exe

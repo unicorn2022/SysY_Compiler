@@ -1,2 +1,4 @@
 .vs/
 x64/
+!x64/Release/advisor-win-amd64.exe
+!x64/Release/task3.exe
