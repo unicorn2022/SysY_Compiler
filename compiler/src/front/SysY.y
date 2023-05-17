@@ -38,8 +38,8 @@ using namespace std;
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义, 分别对应 ast_val 和 int_val
-%type <ast_val> FuncDef FuncType Block Stmt Exp PrimaryExp UnaryExp
-%type <int_val> Number  
+%type <ast_val> FuncDef FuncType Block Stmt Exp PrimaryExp UnaryExp UnaryOp MulExp AddExp
+%type <int_val> Number
 
 %%
 
@@ -97,26 +97,26 @@ Stmt
     }
     ;
 
-// Exp ::= UnaryExp;
+// Exp ::= AddExp;
 Exp
-    : UnaryExp {
+    : AddExp {
         auto ast = new ExpAST();
-        ast->unaryExp = unique_ptr<BaseAST>($1);
+        ast->addExp = unique_ptr<BaseAST>($1);
         $$ = ast;
     }
     ;
 
-// PrimaryExp ::= "(" Exp ")" | Number;
+// PrimaryExp ::= '(' Exp ')' | Number;
 PrimaryExp
     : '(' Exp ')' {
         auto ast = new PrimaryExpAST();
-        ast->kind = 1;
+        ast->kind = PrimaryExpAST::kExp;
         ast->exp = unique_ptr<BaseAST>($2);
         $$ = ast;
     }
     | Number {
         auto ast = new PrimaryExpAST();
-        ast->kind = 2;
+        ast->kind = PrimaryExpAST::kNumber;
         ast->number = $1;
         $$ = ast;
     }
@@ -127,31 +127,95 @@ Number
     : INT_CONST{
         $$ = $1;
     }
+    ;
 
-// UnaryExp ::= PrimaryExp | '+' UnaryExp | '-' UnaryExp | '!' UnaryExp
+// UnaryExp ::= PrimaryExp | UnaryOp UnaryExp;
 UnaryExp
     : PrimaryExp{
         auto ast = new UnaryExpAST();
-        ast->kind = 1;
+        ast->kind = UnaryExpAST::kPrimaryExp;
         ast->primaryExp = unique_ptr<BaseAST>($1);
         $$ = ast;
     }
-    | '+' UnaryExp{
+    | UnaryOp UnaryExp{
         auto ast = new UnaryExpAST();
-        ast->kind = 2;
+        ast->kind = UnaryExpAST::kUnaryExp;
+        ast->unaryOp = unique_ptr<BaseAST>($1);
         ast->unaryExp = unique_ptr<BaseAST>($2);
         $$ = ast;
     }
-    | '-' UnaryExp{
-        auto ast = new UnaryExpAST();
-        ast->kind = 3;
-        ast->unaryExp = unique_ptr<BaseAST>($2);
+    ;
+
+// UnaryOp ::= '+' | '-' | '!';
+UnaryOp
+    : '+' {
+        auto ast = new UnaryOpAST();
+        ast->kind = UnaryOpAST::kPlus;
         $$ = ast;
     }
-    | '!' UnaryExp{
-        auto ast = new UnaryExpAST();
-        ast->kind = 4;
-        ast->unaryExp = unique_ptr<BaseAST>($2);
+    | '-' {
+        auto ast = new UnaryOpAST();
+        ast->kind = UnaryOpAST::kMinus;
+        $$ = ast;
+    }
+    | '!' {
+        auto ast = new UnaryOpAST();
+        ast->kind = UnaryOpAST::kNot;
+        $$ = ast;
+    }
+    ;
+
+// MulExp ::= UnaryExp | MulExp ('*' | '/' | '%') UnaryExp
+MulExp
+    : UnaryExp {
+        auto ast = new MulExpAST();
+        ast->kind = MulExpAST::kUnaryExp;
+        ast->unaryExp = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    | MulExp '*' UnaryExp {
+        auto ast = new MulExpAST();
+        ast->kind = MulExpAST::kMul;
+        ast->mulExp = unique_ptr<BaseAST>($1);
+        ast->unaryExp = unique_ptr<BaseAST>($3);
+        $$ = ast;
+    }
+    | MulExp '/' UnaryExp {
+        auto ast = new MulExpAST();
+        ast->kind = MulExpAST::kDiv;
+        ast->mulExp = unique_ptr<BaseAST>($1);
+        ast->unaryExp = unique_ptr<BaseAST>($3);
+        $$ = ast;
+    }
+    | MulExp '%' UnaryExp {
+        auto ast = new MulExpAST();
+        ast->kind = MulExpAST::kMod;
+        ast->mulExp = unique_ptr<BaseAST>($1);
+        ast->unaryExp = unique_ptr<BaseAST>($3);
+        $$ = ast;
+    }
+    ;
+
+// AddExp ::= MulExp | AddExp ('+' | '-') MulExp
+AddExp
+    : MulExp {
+        auto ast = new AddExpAST();
+        ast->kind = AddExpAST::kMulExp;
+        ast->mulExp = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    | AddExp '+' MulExp {
+        auto ast = new AddExpAST();
+        ast->kind = AddExpAST::kAdd;
+        ast->addExp = unique_ptr<BaseAST>($1);
+        ast->mulExp = unique_ptr<BaseAST>($3);
+        $$ = ast;
+    }
+    | AddExp '-' MulExp {
+        auto ast = new AddExpAST();
+        ast->kind = AddExpAST::kSub;
+        ast->addExp = unique_ptr<BaseAST>($1);
+        ast->mulExp = unique_ptr<BaseAST>($3);
         $$ = ast;
     }
     ;

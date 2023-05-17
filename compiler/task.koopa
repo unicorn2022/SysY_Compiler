@@ -1,11 +1,11 @@
-global @x = alloc [[i32, 3], 2], {{1, 2, 3}, {4, 5, 6}}
-
 fun @main(): i32 {
 %entry:
-	@arr = alloc [i32, 3]         // @arr 的类型是 **i32
-	// %ptr1 = load @arr         // %ptr1 的类型是 *i32
-	%ptr2 = getptr @arr, 1   // %ptr2 的类型是 *i32
-	%value = load %ptr2       // %value 的类型是 i32
-	// 这是一段类型和功能都正确的 Koopa IR 代码
-	ret 0
+	%0 = sub 0, 6
+	%1 = div %0, 2
+	%2 = eq 0, 3
+	%3 = add 2, %2
+	%4 = sub 0, %3
+	%5 = mul 5, %4
+	%6 = add %1, %5
+	ret %6
 }
