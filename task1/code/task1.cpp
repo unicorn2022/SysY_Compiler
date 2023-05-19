@@ -1,10 +1,33 @@
 #pragma warning(disable:4996)
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 const int maxn = 10000 + 10;
 int n, a[maxn];
+
+int ReadInt() {
+	int ch = getchar();
+	while ((ch > '9' || ch < '0') && ch != '-') ch = getchar();
+	int ans = 0;
+	int flag = 1;
+	if (ch == '-') {
+		flag = -1;
+		ch = getchar();
+	}
+	while (ch >= '0' && ch <= '9') {
+		ans = ans * 10 + ch - '0';
+		ch = getchar();
+	}
+	return ans * flag;
+}
+
+void PrintInt(int x) {
+	if (x < 0) {
+		putchar('-');
+		x = -x;
+	}
+	if (x >= 10) PrintInt(x / 10);
+	putchar(x % 10 + '0');
+}
 
 void swap(int* x, int* y) {
 	int temp = *x;
@@ -52,11 +75,18 @@ void Quicksort(int a[], int Left, int Right) {
 
 int main() {
 	//freopen("./input/task1.1.in", "r", stdin);
-	scanf("%d", &n);
-	for (int i = 1; i <= n; i++)
-		scanf("%d", &a[i]);
+	n = ReadInt();
+	//scanf("%d", &n);
+	for (int i = 1; i <= n; i++) {
+		a[i] = ReadInt();
+		//scanf("%d", &a[i]);
+		//printf("a[%d] = %d\n", i, a[i]);
+	}
 	Quicksort(a, 1, n);
-	for (int i = 1; i <= n; i++)
-		printf("%d\n", a[i]);
+	for (int i = 1; i <= n; i++) {
+		PrintInt(a[i]);
+		putchar('\n');
+		//printf("a[%d] = %d\n", i, a[i]);
+	}
 	return 0;
 }
