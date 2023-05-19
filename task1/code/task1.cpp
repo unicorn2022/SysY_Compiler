@@ -6,7 +6,9 @@ int n, a[maxn];
 
 int ReadInt() {
 	int ch = getchar();
-	while ((ch > '9' || ch < '0') && ch != '-') ch = getchar();
+	while ((ch > '9' || ch < '0') && ch != '-') {
+		ch = getchar();
+	}
 	int ans = 0;
 	int flag = 1;
 	if (ch == '-') {
@@ -25,7 +27,9 @@ void PrintInt(int x) {
 		putchar('-');
 		x = -x;
 	}
-	if (x >= 10) PrintInt(x / 10);
+	if (x >= 10) {
+		PrintInt(x / 10);
+	}
 	putchar(x % 10 + '0');
 }
 
@@ -38,12 +42,15 @@ void swap(int* x, int* y) {
 int Median3(int a[], int Left, int Right) {
 	int Center = (Left + Right) / 2;
 
-	if (a[Left] > a[Center])
+	if (a[Left] > a[Center]) {
 		swap(&a[Left], &a[Center]);
-	if (a[Left] > a[Right])
+	}
+	if (a[Left] > a[Right]) {
 		swap(&a[Left], &a[Right]);
-	if (a[Center] > a[Right])
+	}
+	if (a[Center] > a[Right]) {
 		swap(&a[Center], &a[Right]);
+	}
 
 	swap(&a[Center], &a[Right - 1]);
 	//只需要对Left ~ Right-1 进行分割
@@ -52,21 +59,29 @@ int Median3(int a[], int Left, int Right) {
 }
 
 void Quicksort(int a[], int Left, int Right) {
-	if (Left >= Right) return;
+	if (Left >= Right) {
+		return;
+	}
 	if (Right - Left + 1 == 2) {
 		if (a[Left] > a[Right]) swap(&a[Left], &a[Right]);
 		return;
 	}
-	int L = Left, R = Right;
+	int L = Left;
+	int R = Right;
 	int Pivot = Median3(a, L, R);
-	int i = Left, j = Right - 1;
+	int i = Left;
+	int j = Right - 1;
 	//只需要对Left+1 ~ Right-1进行分割
 	//初始化i指向Left,j指向Right-1
 	while (1) {
 		while (a[++i] < Pivot) {}
 		while (a[--j] > Pivot) {}
-		if (i < j)swap(&a[i], &a[j]);
-		else break;
+		if (i < j) {
+			swap(&a[i], &a[j]);
+		}
+		else {
+			break;
+		}
 	}
 	swap(&a[i], &a[Right - 1]);
 	Quicksort(a, Left, i - 1);
