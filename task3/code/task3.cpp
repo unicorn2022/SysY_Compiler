@@ -1,14 +1,14 @@
 #pragma warning(disable : 4996)
 #include <stdio.h>
 
-
-int ReadLine(char s[]) {
-    char ch = getchar();
-    if (ch < 0) {
+int ReadLine(int s[]) {
+    int ch = getchar();
+    if (ch <= 0) {
+        //printf("ch = %d\n", ch);
         return EOF;
     }
     int len = 0;
-    while (ch != '\n' && ch >= 0 && ch != ' ') {
+    while (ch != '\n' && ch > 0) {
         s[len] = ch;
         ch = getchar();
         len = len + 1;
@@ -111,7 +111,8 @@ int Find(int s[]) {
 // 按照输入顺序存储课程
 int course_input[110];
 // 将当前课程的信息保存下来
-void Prework(char line[]) {
+void Prework(int line[]) {
+    if (GetLen(line) == 0) return;
     // 找当前课程 第1个|之前
     int now[110] = {0};
     int tmp = 0;
@@ -358,11 +359,11 @@ int NeedToLearn(int index) {
 
 int main() {
      //freopen("./input/task3.1.in", "r", stdin);
-    char line[1000];
-    while (scanf("%s", line) != EOF) {
-    //while (ReadLine(line) != EOF) {
+    int line[1000];
+    //while (scanf("%s", line) != EOF) {
+    while (ReadLine(line) != EOF) {
         Prework(line);
-        //printf("%s\n", line);
+        //fprintf(stderr, "%s\n", line);
     }
     PrintGPA();
     PrintAttemped();
