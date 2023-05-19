@@ -74,8 +74,10 @@ void Quicksort(int a[], int Left, int Right) {
 	//只需要对Left+1 ~ Right-1进行分割
 	//初始化i指向Left,j指向Right-1
 	while (1) {
-		while (a[++i] < Pivot) {}
-		while (a[--j] > Pivot) {}
+		i = i + 1;
+		while (a[i] < Pivot) { i = i + 1; }
+		j = j - 1;
+		while (a[j] > Pivot) { j = j - 1; }
 		if (i < j) {
 			swap(&a[i], &a[j]);
 		}
@@ -92,14 +94,18 @@ int main() {
 	//freopen("./input/task1.1.in", "r", stdin);
 	n = ReadInt();
 	//scanf("%d", &n);
-	for (int i = 1; i <= n; i++) {
+	int i = 1;
+	while(i <= n) {
 		a[i] = ReadInt();
+		i = i + 1;
 		//scanf("%d", &a[i]);
 		//printf("a[%d] = %d\n", i, a[i]);
 	}
 	Quicksort(a, 1, n);
-	for (int i = 1; i <= n; i++) {
+	i = 1;
+	while (i <= n) {
 		PrintInt(a[i]);
+		i = i + 1;
 		putchar('\n');
 		//printf("a[%d] = %d\n", i, a[i]);
 	}
