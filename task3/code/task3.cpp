@@ -1,7 +1,5 @@
 #pragma warning(disable : 4996)
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 
 int ReadLine(char s[]) {
@@ -19,7 +17,7 @@ int ReadLine(char s[]) {
     return len;
 }
 
-void PrintLine(char s[]) {
+void PrintLine(int s[]) {
     int i = 0;
     while (s[i] != 0) {
         putchar(s[i]);
@@ -67,9 +65,9 @@ int credit[110];        // 学分
 int need[110][8][8];  // 前置课程
 int cnt[110];         // 前置课程的种类数
 int grade[110];       // 得分等级, -1 表示没有读过
-char course[110][110];
+int course[110][110];
 int course_cnt;  // hash表的长度
-int Insert(char s[]) {
+int Insert(int s[]) {
     int now = 0;
     while (s[now]) {
         course[course_cnt][now] = s[now];
@@ -78,8 +76,14 @@ int Insert(char s[]) {
     course_cnt = course_cnt + 1;
     return course_cnt - 1;
 }
-int comp(char s1[], char s2[]) {
-    int len1 = strlen(s1), len2 = strlen(s2);
+int GetLen(int s[]) {
+    int len = 0;
+    while (s[len] != 0)
+        len = len + 1;
+    return len;
+}
+int comp(int s1[], int s2[]) {
+    int len1 = GetLen(s1), len2 = GetLen(s2);
     if (len1 != len2) {
         return 0;
     }
@@ -92,9 +96,9 @@ int comp(char s1[], char s2[]) {
     }
     return 1;
 }
-int Find(char s[]) {
+int Find(int s[]) {
     int i = 0;
-    char* ss = s;
+    int* ss = s;
     while (i < course_cnt) {
         if (comp(ss, course[i])) {
             return i;
@@ -109,7 +113,7 @@ int course_input[110];
 // 将当前课程的信息保存下来
 void Prework(char line[]) {
     // 找当前课程 第1个|之前
-    char now[110] = {0};
+    int now[110] = {0};
     int tmp = 0;
     while (*line != '|') {
         now[0] = now[0] + 1;
