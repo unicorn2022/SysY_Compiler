@@ -53,22 +53,30 @@ int main() {
 	m1 = ReadInt();
 	//scanf("%d%d", &n1, &m1);
 
-	for (int i = 1; i <= n1; i++) {
-		for (int j = 1; j <= m1; j++) {
+	int i = 1;
+	while (i <= n1) {
+		int j = 1;
+		while (j <= m1) {
 			a1[i][j] = ReadInt();
+			j = j + 1;
 			//scanf("%d", &a1[i][j]);
 		}
+		i = i + 1;
 	}
 
 	n2 = ReadInt();
 	m2 = ReadInt();
 	//scanf("%d%d", &n2, &m2);
 
-	for (int i = 1; i <= n2; i++) {
-		for (int j = 1; j <= m2; j++) {
+	i = 1;
+	while (i <= n2) {
+		int j = 1;
+		while (j <= m2) {
 			a2[i][j] = ReadInt();
+			j = j + 1;
 			//scanf("%d", &a2[i][j]);
 		}
+		i = i + 1;
 	}
 
 	if (m1 != n2) {
@@ -101,24 +109,36 @@ int main() {
 	}
 	
 	n3 = n1; m3 = m2;
-	for (int i = 1; i <= n3; i++) {
-		for (int j = 1; j <= m3; j++) {
-			for (int k = 1; k <= m1; k++) {
+	i = 1;
+	while (i <= n3) {
+		int j = 1;
+		while (j <= m3) {
+			int k = 1;
+			while (k <= m1) {
 				a3[i][j] += a1[i][k] * a2[k][j];
+				k = k + 1;
 			}
+			j = j + 1;
 		}
+		i = i + 1;
 	}
 
-	for (int i = 1; i <= n3; i++) {
-		for (int j = 1; j <= m3; j++) {
+	i = 1;
+	while (i <= n3) {
+		int j = 1;
+		while (j <= m3) {
 			int len = GetIntLength(a3[i][j]);
+			int k = 1;
 			//printf("len = %d\n", len);
-			for (int k = 1; k <= 10 - len; k++) {
+			while (k <= 10 - len) {
 				putchar(' ');
+				k = k + 1;
 			}
 			PrintInt(a3[i][j]);
+			j = j + 1;
 			//printf("%10d", a3[i][j]);
 		}
+		i = i + 1;
 		putchar('\n');
 	}
 	
