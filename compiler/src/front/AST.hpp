@@ -698,9 +698,17 @@ public:
         if (kind == kAnd) {
             std::string var1 = lAndExp->PrintIR(tab, buffer);
             std::string var2 = eqExp->PrintIR(tab, buffer);
-            std::string now = NewTempSymbol();
-            buffer += tab + now + " = and " + var1 + ", " + var2 + "\n";
-            return now;
+            // 用其他运算实现逻辑与
+            // now1 = ne 0, var1
+            // now2 = ne 0, var2
+            // now3 = and now1, now2
+            std::string now1 = NewTempSymbol();
+            std::string now2 = NewTempSymbol();
+            std::string now3 = NewTempSymbol();
+            buffer += tab + now1 + " = ne 0, " + var1 + "\n";
+            buffer += tab + now2 + " = ne 0, " + var2 + "\n";
+            buffer += tab + now3 + " = and " + now1 + ", " + now2 + "\n";
+            return now3;
         } else {
             std::cerr << "LAndExpAST::PrintIR: unknown kind" << std::endl;
         }
@@ -750,9 +758,14 @@ public:
         if (kind == kOr) {
             std::string var1 = lOrExp->PrintIR(tab, buffer);
             std::string var2 = lAndExp->PrintIR(tab, buffer);
-            std::string now = NewTempSymbol();
-            buffer += tab + now + " = or " + var1 + ", " + var2 + "\n";
-            return now;
+            // 用其他运算实现逻辑或
+            // now1 = or var1, var2
+            // now2 = ne 0, now1
+            std::string now1 = NewTempSymbol();
+            std::string now2 = NewTempSymbol();
+            buffer += tab + now1 + " = or " + var1 + ", " + var2 + "\n";
+            buffer += tab + now2 + " = ne 0, " + now1 + "\n";
+            return now2;
         } else {
             std::cerr << "LOrExpAST::PrintIR: unknown kind" << std::endl;
         }
