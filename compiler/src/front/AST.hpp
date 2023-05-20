@@ -165,18 +165,18 @@ public:
 */
 class ExpAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> addExp;
+    std::unique_ptr<BaseAST> lOrExp;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "ExpAST {\n";
-        ans += tab + "\taddExp: " + addExp->PrintAST(tab + "\t");
+        ans += tab + "\taddExp: " + lOrExp->PrintAST(tab + "\t");
         ans += tab + "}\n";
         return ans;
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        std::string var = addExp->PrintIR(tab, buffer);
+        std::string var = lOrExp->PrintIR(tab, buffer);
         return var;
     }
 };
@@ -202,7 +202,7 @@ public:
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "PrimaryExpAST {\n";
-        switch (kind) { // TODO 把switch改成if else，switch中不能定义变量
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kExp:
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             break;
@@ -218,7 +218,7 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        switch (kind) { // TODO 把switch改成if else，switch中不能定义变量
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kExp:
             return exp->PrintIR(tab, buffer);
             break;
@@ -255,7 +255,7 @@ public:
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "UnaryExpAST {\n";
-        switch (kind) { // TODO 把switch改成if else，switch中不能定义变量
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kPrimaryExp:
             ans += tab + "\tprimaryExp: " + primaryExp->PrintAST(tab + "\t");
             break;
@@ -316,7 +316,7 @@ public:
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "UnaryOpAst {\n";
-        switch (kind) { // TODO 把switch改成if else，switch中不能定义变量
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kPlus:
             ans += tab + "\tkind: +\n";
             break;
@@ -376,7 +376,7 @@ public:
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "MulExpAST {\n";
-        switch (kind) { // TODO 把switch改成if else，switch中不能定义变量
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kUnaryExp:
             ans += tab + "\tunaryExp: " + unaryExp->PrintAST(tab + "\t");
             break;
@@ -435,6 +435,8 @@ public:
     }
 };
 
+// AddExpAST: 加法表达式，包括加法、减法
+// AddExp ::= MulExp | AddExp '+' MulExp | AddExp '-' MulExp
 class AddExpAST : public BaseAST {
 public:
     enum Kind {
@@ -451,7 +453,7 @@ public:
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "AddExpAST {\n";
-        switch (kind) { // TODO 把switch改成if else，switch中不能定义变量
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kMulExp:
             ans += tab + "\tmulExp: " + mulExp->PrintAST(tab + "\t");
             break;
@@ -493,6 +495,266 @@ public:
             return now;
         } else {
             std::cerr << "AddExpAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+// RelExpAST: 关系表达式，包括小于、大于、小于等于、大于等于
+// RelExp ::= AddExp | RelExp '<' AddExp | RelExp '>' AddExp | RelExp '<=' AddExp | RelExp '>=' AddExp
+class RelExpAST : public BaseAST {
+public:
+    enum Kind {
+        kAddExp,
+        kLT,
+        kGT,
+        kLE,
+        kGE,
+    };
+
+    Kind kind;
+
+    std::unique_ptr<BaseAST> addExp;
+    std::unique_ptr<BaseAST> relExp;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "RelExpAST {\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kAddExp:
+            ans += tab + "\taddExp: " + addExp->PrintAST(tab + "\t");
+            break;
+        case kLT:
+            ans += tab + "\trelExp: " + relExp->PrintAST(tab + "\t");
+            ans += tab + "\tkind: <\n";
+            ans += tab + "\taddExp: " + addExp->PrintAST(tab + "\t");
+            break;
+        case kGT:
+            ans += tab + "\trelExp: " + relExp->PrintAST(tab + "\t");
+            ans += tab + "\tkind: >\n";
+            ans += tab + "\taddExp: " + addExp->PrintAST(tab + "\t");
+            break;
+        case kLE:
+            ans += tab + "\trelExp: " + relExp->PrintAST(tab + "\t");
+            ans += tab + "\tkind: <=\n";
+            ans += tab + "\taddExp: " + addExp->PrintAST(tab + "\t");
+            break;
+        case kGE:
+            ans += tab + "\trelExp: " + relExp->PrintAST(tab + "\t");
+            ans += tab + "\tkind: >=\n";
+            ans += tab + "\taddExp: " + addExp->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "RelExpAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override {
+        if (kind == kAddExp) {
+            std::string var = addExp->PrintIR(tab, buffer);
+            return var;
+        } else
+        if (kind == kLT) {
+            std::string var1 = relExp->PrintIR(tab, buffer);
+            std::string var2 = addExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = lt " + var1 + ", " + var2 + "\n";
+            return now;
+        } else
+        if (kind == kGT) {
+            std::string var1 = relExp->PrintIR(tab, buffer);
+            std::string var2 = addExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = gt " + var1 + ", " + var2 + "\n";
+            return now;
+        } else
+        if (kind == kLE) {
+            std::string var1 = relExp->PrintIR(tab, buffer);
+            std::string var2 = addExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = le " + var1 + ", " + var2 + "\n";
+            return now;
+        } else
+        if (kind == kGE) {
+            std::string var1 = relExp->PrintIR(tab, buffer);
+            std::string var2 = addExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = ge " + var1 + ", " + var2 + "\n";
+            return now;
+        } else {
+            std::cerr << "RelExpAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+// EqExpAST: 相等表达式，包括等于、不等于
+// EqExp ::= RelExp | EqExp '==' RelExp | EqExp '!=' RelExp
+class EqExpAST : public BaseAST {
+public:
+    enum Kind {
+        kRelExp,
+        kEQ,
+        kNE,
+    };
+    
+    Kind kind;
+
+    std::unique_ptr<BaseAST> relExp;
+    std::unique_ptr<BaseAST> eqExp;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "EqExpAST {\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kRelExp:
+            ans += tab + "\trelExp: " + relExp->PrintAST(tab + "\t");
+            break;
+        case kEQ:
+            ans += tab + "\teqExp: " + eqExp->PrintAST(tab + "\t");
+            ans += tab + "\tkind: ==\n";
+            ans += tab + "\trelExp: " + relExp->PrintAST(tab + "\t");
+            break;
+        case kNE:
+            ans += tab + "\teqExp: " + eqExp->PrintAST(tab + "\t");
+            ans += tab + "\tkind: !=\n";
+            ans += tab + "\trelExp: " + relExp->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "EqExpAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override {
+        if (kind == kRelExp) {
+            std::string var = relExp->PrintIR(tab, buffer);
+            return var;
+        } else
+        if (kind == kEQ) {
+            std::string var1 = eqExp->PrintIR(tab, buffer);
+            std::string var2 = relExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = eq " + var1 + ", " + var2 + "\n";
+            return now;
+        } else
+        if (kind == kNE) {
+            std::string var1 = eqExp->PrintIR(tab, buffer);
+            std::string var2 = relExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = ne " + var1 + ", " + var2 + "\n";
+            return now;
+        } else {
+            std::cerr << "EqExpAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+// LANDExpAST: 逻辑与表达式
+// LAndExp ::= EqExp | LAndExp '&&' EqExp
+class LAndExpAST : public BaseAST {
+public:
+    enum Kind {
+        kEqExp,
+        kAnd,
+    };
+
+    Kind kind;
+
+    std::unique_ptr<BaseAST> eqExp;
+    std::unique_ptr<BaseAST> lAndExp;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "LAndExpAST {\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kEqExp:
+            ans += tab + "\teqExp: " + eqExp->PrintAST(tab + "\t");
+            break;
+        case kAnd:
+            ans += tab + "\tlAndExp: " + lAndExp->PrintAST(tab + "\t");
+            ans += tab + "\tkind: &&\n";
+            ans += tab + "\teqExp: " + eqExp->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "LAndExpAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override {
+        if (kind == kEqExp) {
+            std::string var = eqExp->PrintIR(tab, buffer);
+            return var;
+        } else
+        if (kind == kAnd) {
+            std::string var1 = lAndExp->PrintIR(tab, buffer);
+            std::string var2 = eqExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = and " + var1 + ", " + var2 + "\n";
+            return now;
+        } else {
+            std::cerr << "LAndExpAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+// LORExpAST: 逻辑或表达式
+// LOrExp ::= LAndExp | LOrExp '||' LAndExp
+class LOrExpAST : public BaseAST {
+public:
+    enum Kind {
+        kLAndExp,
+        kOr,
+    };
+
+    Kind kind;
+
+    std::unique_ptr<BaseAST> lAndExp;
+    std::unique_ptr<BaseAST> lOrExp;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "LOrExpAST {\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kLAndExp:
+            ans += tab + "\tlAndExp: " + lAndExp->PrintAST(tab + "\t");
+            break;
+        case kOr:
+            ans += tab + "\tlOrExp: " + lOrExp->PrintAST(tab + "\t");
+            ans += tab + "\tkind: ||\n";
+            ans += tab + "\tlAndExp: " + lAndExp->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "LOrExpAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+        
+    std::string PrintIR(std::string tab, std::string &buffer) const override {
+        if (kind == kLAndExp) {
+            std::string var = lAndExp->PrintIR(tab, buffer);
+            return var;
+        } else
+        if (kind == kOr) {
+            std::string var1 = lOrExp->PrintIR(tab, buffer);
+            std::string var2 = lAndExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = or " + var1 + ", " + var2 + "\n";
+            return now;
+        } else {
+            std::cerr << "LOrExpAST::PrintIR: unknown kind" << std::endl;
         }
         return "";
     }
