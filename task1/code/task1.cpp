@@ -33,26 +33,30 @@ void PrintInt(int x) {
 	putchar(x % 10 + '0');
 }
 
-void swap(int* x, int* y) {
-	int temp = *x;
-	*x = *y;
-	*y = temp;
-}
-
 int Median3(int a[], int Left, int Right) {
 	int Center = (Left + Right) / 2;
+	int temp = 0;
 
 	if (a[Left] > a[Center]) {
-		swap(&a[Left], &a[Center]);
+		temp = a[Left];
+		a[Left] = a[Center];
+		a[Center] = temp;
 	}
 	if (a[Left] > a[Right]) {
-		swap(&a[Left], &a[Right]);
+		temp = a[Left];
+		a[Left] = a[Right];
+		a[Right] = temp;
 	}
 	if (a[Center] > a[Right]) {
-		swap(&a[Center], &a[Right]);
+		temp = a[Center];
+		a[Center] = a[Right];
+		a[Right] = temp;
 	}
 
-	swap(&a[Center], &a[Right - 1]);
+	temp = a[Center];
+	a[Center] = a[Right - 1];
+	a[Right - 1] = temp;
+
 	//只需要对Left ~ Right-1 进行分割
 	//将pivot换到待分割的队列的末尾
 	return a[Right - 1];
@@ -63,7 +67,11 @@ void Quicksort(int a[], int Left, int Right) {
 		return;
 	}
 	if (Right - Left + 1 == 2) {
-		if (a[Left] > a[Right]) swap(&a[Left], &a[Right]);
+		if (a[Left] > a[Right]) {
+			int temp = a[Left];
+			a[Left] = a[Right];
+			a[Right] = temp;
+		}
 		return;
 	}
 	int L = Left;
@@ -79,13 +87,18 @@ void Quicksort(int a[], int Left, int Right) {
 		j = j - 1;
 		while (a[j] > Pivot) { j = j - 1; }
 		if (i < j) {
-			swap(&a[i], &a[j]);
+			int temp = a[i];
+			a[i] = a[j];
+			a[j] = temp;
 		}
 		else {
 			break;
 		}
 	}
-	swap(&a[i], &a[Right - 1]);
+
+	int temp = a[i];
+	a[i] = a[Right - 1];
+	a[Right - 1] = temp;
 	Quicksort(a, Left, i - 1);
 	Quicksort(a, i + 1, Right);
 }
