@@ -13,8 +13,8 @@ int main(int argc, const char *argv[]) {
     
     if (strcmp(mode, "-koopa") == 0) {
         front_main(input, output);
-    } else
-    if (strcmp(mode, "-riscv") == 0) {
+    } 
+    else if (strcmp(mode, "-riscv") == 0) {
         const char IRFile[] = "task.koopa";
 
         // 前端读入input文件，生成IR树，放到IRFile文件中

@@ -34,6 +34,12 @@ autotest -koopa -s lv1 /root/SysY_Compiler/compiler/
 #### 2.2	第2章
 
 ```bash
-autotest -riscv -s lv1 /root/SysY_Compiler/compiler/
-
+autotest -riscv -s lv2 /root/SysY_Compiler/compiler/
 ```
+
+#### 2.3	第3章
+
+```bash
+autotest -riscv -s lv3 /root/SysY_Compiler/compiler/
+```
+

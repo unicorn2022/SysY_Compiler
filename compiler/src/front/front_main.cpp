@@ -13,7 +13,7 @@ void front_main(const char input[], const char output[]){
     assert(!ret);
 
     // AST树
-    cout << "front:\n" << ast->PrintAST("");
+    // cout << "front:\n" << ast->PrintAST("");
 
     // IR树
     std::string IRTree;

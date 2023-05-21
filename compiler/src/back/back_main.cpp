@@ -9,7 +9,7 @@
 #include "back_main.hpp"
 using namespace std;
 
-// #define cout fout
+#define cout fout
 
 ofstream fout;
 
