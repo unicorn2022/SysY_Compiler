@@ -1,6 +1,20 @@
+fun @half(@x: i32): i32 {
+%entry:
+	%x = alloc i32
+	store @x, %x
+	%0 = load %x
+	%1 = div %0, 2
+	ret %1
+}
+
+fun @f(@x: i32): i32 {
+%entry:
+	%0 = call @half(@x)
+  	ret %0
+}
+
 fun @main(): i32 {
 %entry:
-	%0 = add 2, 1
-	%1 = add %0, 1
-	ret %1
+	%0 = call @f(1)
+	ret %0
 }
