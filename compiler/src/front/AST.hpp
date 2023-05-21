@@ -1,5 +1,66 @@
 #pragma once
 #include <iostream>
+#include <map>
+#include <vector>
+
+/**************** 符号表 ****************/
+
+class SymbolTable {
+public:
+    struct Symbol {
+        enum Type { kConst, kVar } type;
+        int const_val;
+    };
+
+    SymbolTable() = default;
+    ~SymbolTable() = default;
+
+    // 插入符号定义
+    void AddConstSymbol(std::string name, int const_val) {
+        if (table.find(name) != table.end()) {
+            std::cerr << "SymbolTable::AddSymbol: symbol " << name << " already exists" << std::endl;
+            return;
+        }
+        Symbol symbol;
+        symbol.type = Symbol::kConst;
+        symbol.const_val = const_val;
+        table[name] = symbol;
+    }
+
+    // 确认符号定义是否存在
+    bool HasSymbol(std::string name) {
+        return table.find(name) != table.end();
+    }
+
+    Symbol::Type GetSymbolType(std::string name) {
+        if (table.find(name) == table.end()) {
+            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " not found" << std::endl;
+            return Symbol::kVar; // XXX 没有意义，只是为了不报错
+        }
+        return table[name].type;
+    }
+
+    int GetConstSymbolValue(std::string name) {
+        if (table.find(name) == table.end()) {
+            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " not found" << std::endl;
+            return 0;
+        }
+        if (table[name].type != Symbol::kConst) {
+            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " is not a const" << std::endl;
+            return 0;
+        }
+        return table[name].const_val;
+    }
+private:
+    std::map<std::string, Symbol> table;
+};
+
+extern SymbolTable symbolTable;
+
+// TODO lv5 作用域中需要支持嵌套的符号表
+
+/**************** AST ****************/
+
 // 所有 AST 的基类
 class BaseAST {
 public:
@@ -14,6 +75,11 @@ public:
         count_var++;
         return ret;
     }
+};
+
+class BaseExpAST : public BaseAST {
+public:
+    virtual int CalcConstExp() const = 0;
 };
 
 // CompUnit: 起始字符, 表示整个文件
@@ -104,28 +170,169 @@ public:
 };
 
 // Block: 函数的结构体
-// Block :== '{' Stmt '}'
-/**
-*   翻译为:
-*   %entry:
-*       [Stmt]
-*/
+// Block :== '{' {BlockItem} '}'
 class BlockAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> stmt;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseAST> > > blockItems;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "BlockAST {\n";
-        ans += tab + "\tstmt: " + stmt->PrintAST(tab + "\t");
+        ans += tab + "\tblockItems: [\n";
+        for (auto &blockItem : *blockItems) {
+            ans += tab + "\t\t" + blockItem->PrintAST(tab + "\t\t");
+        }
+        ans += tab + "\t]\n";
         ans += tab + "}\n";
         return ans;
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
+        // TODO lv5 作用域
         buffer += tab + "\%entry:\n";
-        stmt->PrintIR(tab + "\t", buffer);
+        for (auto &blockItem : *blockItems) {
+            blockItem->PrintIR(tab + "\t", buffer);
+        }
         return "";
+    }
+};
+
+class BlockItemAST : public BaseAST {
+public:
+    enum Kind {
+        kDecl,
+        kStmt
+    };
+
+    Kind kind;
+
+    std::unique_ptr<BaseAST> decl;
+    std::unique_ptr<BaseAST> stmt;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "BlockItemAST {\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kDecl:
+            ans += tab + "\tdecl: " + decl->PrintAST(tab + "\t");
+            break;
+        case kStmt:
+            ans += tab + "\tstmt: " + stmt->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "BlockItemAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        if (kind == kDecl) {
+            decl->PrintIR(tab, buffer);
+        } else
+        if (kind == kStmt) {
+            stmt->PrintIR(tab, buffer);
+        } else {
+            std::cerr << "BlockItemAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+class DeclAST : public BaseAST {
+public:
+    std::unique_ptr<BaseAST> constDecl;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "DeclAST {\n";
+        ans += tab + "\tconstDecl: " + constDecl->PrintAST(tab + "\t");
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        // 常量的定义，不需要产生IR
+        // TODO 变量的定义
+        return "";
+    }
+};
+
+class ConstDeclAST : public BaseAST {
+public:
+    /* enum BType {
+        kInt,
+    }; */
+
+    int bType;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseAST> > > constDefs; // XXX 也许不需要存储指针
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "ConstDeclAST {\n";
+        switch (bType) { // XXX 把switch改成if else，switch中不能定义变量
+        case 0:
+            ans += tab + "\tbType: int\n";
+            break;
+        default:
+            std::cerr << "ConstDeclAST::PrintAST: unknown bType" << std::endl;
+            break;
+        }
+        ans += tab + "\tconstDefs: [\n";
+        for (auto &constDef : *constDefs) {
+            ans += tab + "\t\t" + constDef->PrintAST(tab + "\t\t");
+        }
+        ans += tab + "\t]\n";
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        // 常量的定义，不需要产生IR
+        return "";
+    }
+};
+
+class ConstDefAST : public BaseAST {
+public:
+    std::string ident;
+    std::unique_ptr<BaseExpAST> constInitVal;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "ConstDefAST {\n";
+        ans += tab + "\tident: " + ident + "\n";
+        ans += tab + "\tconstInitVal: " + constInitVal->PrintAST(tab + "\t");
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        // 常量的定义，不需要产生IR
+        return "";
+    }
+};
+
+class ConstInitValAST : public BaseExpAST {
+public:
+    std::unique_ptr<BaseExpAST> constExp;
+
+    int CalcConstExp() const override {
+        return constExp->CalcConstExp();
+    }
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "ConstInitValAST {\n";
+        ans += tab + "\tconstExp: " + constExp->PrintAST(tab + "\t");
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        std::string var = constExp->PrintIR(tab, buffer);
+        return var;
     }
 };
 
@@ -139,7 +346,7 @@ public:
 */
 class StmtAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> exp;
+    std::unique_ptr<BaseExpAST> exp;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -157,15 +364,48 @@ public:
     }
 };
 
+class ConstExpAST : public BaseExpAST {
+public:
+    std::unique_ptr<BaseExpAST> exp;
+
+    bool isCalcuated = false;
+    int value;
+
+    int CalcConstExp() const override {
+        if (isCalcuated) {
+            return value;
+        } else {
+            return exp->CalcConstExp();
+        }
+    }
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "ConstExpAST {\n";
+        ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        // PrintIR 前已经计算了常量表达式的值（在语法分析的时候）
+        return std::to_string(value);
+    }
+};
+
 // Exp: 一个 SysY 表达式
 // Exp ::= AddExp;
 /**
 *   翻译为:
 *   [addExp]
 */
-class ExpAST : public BaseAST {
+class ExpAST : public BaseExpAST {
 public:
-    std::unique_ptr<BaseAST> lOrExp;
+    std::unique_ptr<BaseExpAST> lOrExp;
+
+    int CalcConstExp() const override {
+        return lOrExp->CalcConstExp();
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -181,23 +421,40 @@ public:
     }
 };
 
-// PrimaryExpAST: 表达式中优先计算的部分, 即被'()'包裹的表达式/单个数字
-// PrimaryExp ::= "(" Exp ")" | Number;
+// PrimaryExpAST: 表达式中优先计算的部分, 即被'()'包裹的表达式/标识符/单个数字
+// PrimaryExp ::= "(" Exp ")" | LVal | Number;
 /**
 *   翻译为:
 *   1. [Exp]
 *   2. Number
 */
-class PrimaryExpAST : public BaseAST {
+class PrimaryExpAST : public BaseExpAST {
 public:
     enum Kind {
         kExp,
+        kLVal,
         kNumber
     };
 
     Kind kind;
-    std::unique_ptr<BaseAST> exp;
+    std::unique_ptr<BaseExpAST> exp;
+    std::unique_ptr<std::string> lVal;
     int number;
+
+    int CalcConstExp() const override {
+        if (kind == kExp) {
+            return exp->CalcConstExp();
+        } else
+        if (kind == kLVal) {
+            return symbolTable.GetConstSymbolValue(*lVal);
+        } else
+        if (kind == kNumber) {
+            return number;
+        } else {
+            std::cerr << "PrimaryExpAST::CalcConstExp: unknown kind" << std::endl;
+            return 0;
+        }
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -205,6 +462,9 @@ public:
         switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kExp:
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            break;
+        case kLVal:
+            ans += tab + "\tLVal: " + *lVal + "\n";
             break;
         case kNumber:
             ans += tab + "\tnumber: " + std::to_string(number) + "\n";
@@ -222,6 +482,21 @@ public:
         case kExp:
             return exp->PrintIR(tab, buffer);
             break;
+        case kLVal:
+            if (!symbolTable.HasSymbol(*lVal)) {
+                std::cerr << "PrimaryExpAST::PrintIR: symbol " << *lVal << " not found" << std::endl;
+                break;
+            }
+            if (symbolTable.GetSymbolType(*lVal) == SymbolTable::Symbol::kConst) {
+                return std::to_string(symbolTable.GetConstSymbolValue(*lVal));
+            } else 
+            if (symbolTable.GetSymbolType(*lVal) == SymbolTable::Symbol::kVar) {
+                return *lVal;
+            } else {
+                std::cerr << "PrimaryExpAST::PrintIR: unknown symbol type" << std::endl;
+                break;
+            }
+            break;
         case kNumber:
             return std::to_string(number);
             break;
@@ -234,23 +509,42 @@ public:
 };
 
 // UnaryExpAST: 单目运算表达式
-// UnaryExp ::= PrimaryExp | UnaryOp UnaryExp
+// UnaryExp ::= PrimaryExp | '+' UnaryExp | '-' UnaryExp | '!' UnaryExp
 /**
 *   翻译为:
 *   1. [PrimaryExp]
 *   2. [UnaryExp]
 */
-class UnaryExpAST : public BaseAST {
+class UnaryExpAST : public BaseExpAST {
 public:
     enum Kind {
         kPrimaryExp,
-        kUnaryExp
+        kPositive,
+        kNegative,
+        kNot
     };
     
     Kind kind;
-    std::unique_ptr<BaseAST> primaryExp;
-    std::unique_ptr<BaseAST> unaryOp;
-    std::unique_ptr<BaseAST> unaryExp;
+    std::unique_ptr<BaseExpAST> primaryExp;
+    std::unique_ptr<BaseExpAST> unaryExp;
+
+    int CalcConstExp() const override {
+        if (kind == kPrimaryExp) {
+            return primaryExp->CalcConstExp();
+        } else
+        if (kind == kPositive) {
+            return unaryExp->CalcConstExp();
+        } else
+        if (kind == kNegative) {
+            return -unaryExp->CalcConstExp();
+        } else
+        if (kind == kNot) {
+            return !unaryExp->CalcConstExp();
+        } else {
+            std::cerr << "UnaryExpAST::CalcConstExp: unknown kind" << std::endl;
+            return 0;
+        }
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -259,8 +553,16 @@ public:
         case kPrimaryExp:
             ans += tab + "\tprimaryExp: " + primaryExp->PrintAST(tab + "\t");
             break;
-        case kUnaryExp:
-            ans += tab + "\tunaryOp: " + unaryOp->PrintAST(tab + "\t");
+        case kPositive:
+            ans += tab + "\tunaryOp: " + "+" + "\n";
+            ans += tab + "\tunaryExp: " + unaryExp->PrintAST(tab + "\t");
+            break;
+        case kNegative:
+            ans += tab + "\tunaryOp: " + "-" + "\n";
+            ans += tab + "\tunaryExp: " + unaryExp->PrintAST(tab + "\t");
+            break;
+        case kNot:
+            ans += tab + "\tunaryOp: " + "!" + "\n";
             ans += tab + "\tunaryExp: " + unaryExp->PrintAST(tab + "\t");
             break;
         default:
@@ -275,76 +577,27 @@ public:
         if(kind == kPrimaryExp) {
             std::string var = primaryExp->PrintIR(tab, buffer);
             return var;
-        } else if (kind == kUnaryExp) {
-            std::string op = unaryOp->PrintIR(tab, buffer);
-            // +, 不产生IR
-            if(op == "add"){
-                std::string var = unaryExp->PrintIR(tab, buffer);
-                return var;
-            }
-            // -, IR格式为: now = sub 0, var
-            // !, IR格式为: now = eq 0, var
-            // now 为 %0, %1, %2, ...
-            else if(op == "sub" || op == "eq"){
-                std::string var = unaryExp->PrintIR(tab, buffer);
-                std::string now = NewTempSymbol();
-                buffer += tab + now + " = " + op + " 0, " + var + "\n";
-                return now;
-            }
-            else {
-                std::cerr << "UnaryExpAST::PrintIR: unknown UnaryOp kind" << std::endl;
-            }
+        } else
+        // +, 不产生IR
+        if (kind == kPositive) {
+            std::string var = unaryExp->PrintIR(tab, buffer);
+            return var;
+        } else
+        // -, IR格式为: now = sub 0, var
+        if (kind == kNegative) {
+            std::string var = unaryExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = " + "sub" + " 0, " + var + "\n";
+            return now;
+        } else
+        // !, IR格式为: now = eq 0, var
+        if (kind == kNot) {
+            std::string var = unaryExp->PrintIR(tab, buffer);
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = " + "eq" + " 0, " + var + "\n";
+            return now;
         } else {
             std::cerr << "UnaryExpAST::PrintIR: unknown kind" << std::endl;
-        }
-        return "";
-    }
-};
-
-// UnaryOpAST: 单目运算符
-// UnaryOp ::= '+' | '-' | '!'
-class UnaryOpAST : public BaseAST {
-public:
-    enum Kind {
-        kPlus,
-        kMinus,
-        kNot
-    };
-
-    Kind kind;
-
-    std::string PrintAST(std::string tab) const override {
-        std::string ans = "";
-        ans += "UnaryOpAst {\n";
-        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
-        case kPlus:
-            ans += tab + "\tkind: +\n";
-            break;
-        case kMinus:
-            ans += tab + "\tkind: -\n";
-            break;
-        case kNot:
-            ans += tab + "\tkind: !\n";
-            break;
-        default:
-            std::cerr << "UnaryOpAst::PrintAST: unknown kind" << std::endl;
-            break;
-        }
-        ans += tab + "}\n";
-        return ans;
-    }
-
-    std::string PrintIR(std::string tab, std::string &buffer) const override{
-        if (kind == kPlus) {
-            return "add";
-        } else
-        if (kind == kMinus) {
-            return "sub";
-        } else
-        if (kind == kNot) {
-            return "eq";
-        } else {
-            std::cerr << "UnaryOpAst::PrintIR: unknown kind" << std::endl;
         }
         return "";
     }
@@ -359,7 +612,7 @@ public:
  * 3.
  * 4.
  */
-class MulExpAST : public BaseAST {
+class MulExpAST : public BaseExpAST {
 public:
     enum Kind {
         kUnaryExp,
@@ -370,8 +623,26 @@ public:
 
     Kind kind;
 
-    std::unique_ptr<BaseAST> unaryExp;
-    std::unique_ptr<BaseAST> mulExp;
+    std::unique_ptr<BaseExpAST> unaryExp;
+    std::unique_ptr<BaseExpAST> mulExp;
+
+    int CalcConstExp() const override {
+        if (kind == kUnaryExp) {
+            return unaryExp->CalcConstExp();
+        } else
+        if (kind == kMul) {
+            return mulExp->CalcConstExp() * unaryExp->CalcConstExp();
+        } else
+        if (kind == kDiv) {
+            return mulExp->CalcConstExp() / unaryExp->CalcConstExp();
+        } else
+        if (kind == kMod) {
+            return mulExp->CalcConstExp() % unaryExp->CalcConstExp();
+        } else {
+            std::cerr << "MulExpAST::CalcConstExp: unknown kind" << std::endl;
+            return 0;
+        }
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -437,7 +708,7 @@ public:
 
 // AddExpAST: 加法表达式，包括加法、减法
 // AddExp ::= MulExp | AddExp '+' MulExp | AddExp '-' MulExp
-class AddExpAST : public BaseAST {
+class AddExpAST : public BaseExpAST {
 public:
     enum Kind {
         kMulExp,
@@ -447,8 +718,23 @@ public:
 
     Kind kind;
 
-    std::unique_ptr<BaseAST> mulExp;
-    std::unique_ptr<BaseAST> addExp;
+    std::unique_ptr<BaseExpAST> mulExp;
+    std::unique_ptr<BaseExpAST> addExp;
+
+    int CalcConstExp() const override {
+        if (kind == kMulExp) {
+            return mulExp->CalcConstExp();
+        } else
+        if (kind == kAdd) {
+            return addExp->CalcConstExp() + mulExp->CalcConstExp();
+        } else
+        if (kind == kSub) {
+            return addExp->CalcConstExp() - mulExp->CalcConstExp();
+        } else {
+            std::cerr << "AddExpAST::CalcConstExp: unknown kind" << std::endl;
+            return 0;
+        }
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -502,7 +788,7 @@ public:
 
 // RelExpAST: 关系表达式，包括小于、大于、小于等于、大于等于
 // RelExp ::= AddExp | RelExp '<' AddExp | RelExp '>' AddExp | RelExp '<=' AddExp | RelExp '>=' AddExp
-class RelExpAST : public BaseAST {
+class RelExpAST : public BaseExpAST {
 public:
     enum Kind {
         kAddExp,
@@ -514,8 +800,29 @@ public:
 
     Kind kind;
 
-    std::unique_ptr<BaseAST> addExp;
-    std::unique_ptr<BaseAST> relExp;
+    std::unique_ptr<BaseExpAST> addExp;
+    std::unique_ptr<BaseExpAST> relExp;
+
+    int CalcConstExp() const override {
+        if (kind == kAddExp) {
+            return addExp->CalcConstExp();
+        } else
+        if (kind == kLT) {
+            return relExp->CalcConstExp() < addExp->CalcConstExp();
+        } else
+        if (kind == kGT) {
+            return relExp->CalcConstExp() > addExp->CalcConstExp();
+        } else
+        if (kind == kLE) {
+            return relExp->CalcConstExp() <= addExp->CalcConstExp();
+        } else
+        if (kind == kGE) {
+            return relExp->CalcConstExp() >= addExp->CalcConstExp();
+        } else {
+            std::cerr << "RelExpAST::CalcConstExp: unknown kind" << std::endl;
+            return 0;
+        }
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -593,7 +900,7 @@ public:
 
 // EqExpAST: 相等表达式，包括等于、不等于
 // EqExp ::= RelExp | EqExp '==' RelExp | EqExp '!=' RelExp
-class EqExpAST : public BaseAST {
+class EqExpAST : public BaseExpAST {
 public:
     enum Kind {
         kRelExp,
@@ -603,8 +910,23 @@ public:
     
     Kind kind;
 
-    std::unique_ptr<BaseAST> relExp;
-    std::unique_ptr<BaseAST> eqExp;
+    std::unique_ptr<BaseExpAST> relExp;
+    std::unique_ptr<BaseExpAST> eqExp;
+
+    int CalcConstExp() const override {
+        if (kind == kRelExp) {
+            return relExp->CalcConstExp();
+        } else
+        if (kind == kEQ) {
+            return eqExp->CalcConstExp() == relExp->CalcConstExp();
+        } else
+        if (kind == kNE) {
+            return eqExp->CalcConstExp() != relExp->CalcConstExp();
+        } else {
+            std::cerr << "EqExpAST::CalcConstExp: unknown kind" << std::endl;
+            return 0;
+        }
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -658,7 +980,7 @@ public:
 
 // LANDExpAST: 逻辑与表达式
 // LAndExp ::= EqExp | LAndExp '&&' EqExp
-class LAndExpAST : public BaseAST {
+class LAndExpAST : public BaseExpAST {
 public:
     enum Kind {
         kEqExp,
@@ -667,8 +989,20 @@ public:
 
     Kind kind;
 
-    std::unique_ptr<BaseAST> eqExp;
-    std::unique_ptr<BaseAST> lAndExp;
+    std::unique_ptr<BaseExpAST> eqExp;
+    std::unique_ptr<BaseExpAST> lAndExp;
+
+    int CalcConstExp() const override {
+        if (kind == kEqExp) {
+            return eqExp->CalcConstExp();
+        } else
+        if (kind == kAnd) {
+            return lAndExp->CalcConstExp() && eqExp->CalcConstExp();
+        } else {
+            std::cerr << "LAndExpAST::CalcConstExp: unknown kind" << std::endl;
+            return 0;
+        }
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -718,7 +1052,7 @@ public:
 
 // LORExpAST: 逻辑或表达式
 // LOrExp ::= LAndExp | LOrExp '||' LAndExp
-class LOrExpAST : public BaseAST {
+class LOrExpAST : public BaseExpAST {
 public:
     enum Kind {
         kLAndExp,
@@ -727,8 +1061,20 @@ public:
 
     Kind kind;
 
-    std::unique_ptr<BaseAST> lAndExp;
-    std::unique_ptr<BaseAST> lOrExp;
+    std::unique_ptr<BaseExpAST> lAndExp;
+    std::unique_ptr<BaseExpAST> lOrExp;
+
+    int CalcConstExp() const override {
+        if (kind == kLAndExp) {
+            return lAndExp->CalcConstExp();
+        } else
+        if (kind == kOr) {
+            return lOrExp->CalcConstExp() || lAndExp->CalcConstExp();
+        } else {
+            std::cerr << "LOrExpAST::CalcConstExp: unknown kind" << std::endl;
+        }
+        return 0;
+    }
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
