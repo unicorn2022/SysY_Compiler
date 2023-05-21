@@ -835,7 +835,7 @@ int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
     // printf("-----------Visit_Inst_Call ----------\n");
 
     // 将a0~a7压栈
-    cout << "\taddi sp, -32\n";
+    cout << "\taddi sp, sp, -32\n";
     for(int i = 0; i <= 7; i++){
         cout << "\tsw   a" << i << ", " << i*4 << "(sp)\n";
     }
@@ -881,7 +881,7 @@ int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
     cout << "\tcall " << callee->name+1 << "\n";
     
     // 先恢复栈指针
-    cout << "\taddi sp, 32\n";
+    cout << "\taddi sp, sp, 32\n";
     
     // 返回值为int32时, 需要保留返回值到栈中
     if(ret_type == KOOPA_RTT_INT32){

@@ -4,7 +4,7 @@
 half:
 	addi sp, sp, -16
 	sw   ra, 12(sp)
-entry:
+entry_half:
 	mv   t0, a0
 	sw   t0, 0(sp)
 
@@ -27,8 +27,8 @@ entry:
 f:
 	addi sp, sp, -8
 	sw   ra, 4(sp)
-entry:
-	addi sp, -32
+entry_f:
+	addi sp, sp, -32
 	sw   a0, 0(sp)
 	sw   a1, 4(sp)
 	sw   a2, 8(sp)
@@ -39,7 +39,7 @@ entry:
 	sw   a7, 28(sp)
 	mv   a0, a0
 	call half
-	addi sp, 32
+	addi sp, sp, 32
 	sw   a0, 0(sp)
 	lw   a0, -32(sp)
 	lw   a1, -28(sp)
@@ -61,8 +61,8 @@ entry:
 main:
 	addi sp, sp, -8
 	sw   ra, 4(sp)
-entry:
-	addi sp, -32
+entry_main:
+	addi sp, sp, -32
 	sw   a0, 0(sp)
 	sw   a1, 4(sp)
 	sw   a2, 8(sp)
@@ -73,7 +73,7 @@ entry:
 	sw   a7, 28(sp)
 	li   a0, 1
 	call f
-	addi sp, 32
+	addi sp, sp, 32
 	sw   a0, 0(sp)
 	lw   a0, -32(sp)
 	lw   a1, -28(sp)
