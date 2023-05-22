@@ -9,13 +9,16 @@ class SymbolTable {
 public:
     struct Symbol {
         enum Type { kConst, kVar } type;
-        int const_val;
+        union {
+            int const_val;
+            int var_val;
+        } val;
     };
 
     SymbolTable() = default;
     ~SymbolTable() = default;
 
-    // 插入符号定义
+    // 插入常量符号定义
     void AddConstSymbol(std::string name, int const_val) {
         if (table.find(name) != table.end()) {
             std::cerr << "SymbolTable::AddSymbol: symbol " << name << " already exists" << std::endl;
@@ -23,7 +26,19 @@ public:
         }
         Symbol symbol;
         symbol.type = Symbol::kConst;
-        symbol.const_val = const_val;
+        symbol.val.const_val = const_val;
+        table[name] = symbol;
+    }
+
+    // 插入变量符号定义
+    void AddVarSymbol(std::string name) {
+        if (table.find(name) != table.end()) {
+            std::cerr << "SymbolTable::AddSymbol: symbol " << name << " already exists" << std::endl;
+            return;
+        }
+        Symbol symbol;
+        symbol.type = Symbol::kVar;
+        symbol.val.var_val = 0; // TODO lv5 变量的值
         table[name] = symbol;
     }
 
@@ -49,7 +64,19 @@ public:
             std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " is not a const" << std::endl;
             return 0;
         }
-        return table[name].const_val;
+        return table[name].val.const_val;
+    }
+
+    int GetVarSymbolValue(std::string name) {
+        if (table.find(name) == table.end()) {
+            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " not found" << std::endl;
+            return 0;
+        }
+        if (table[name].type != Symbol::kVar) {
+            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " is not a var" << std::endl;
+            return 0;
+        }
+        return table[name].val.var_val;
     }
 private:
     std::map<std::string, Symbol> table;
@@ -242,19 +269,44 @@ public:
 
 class DeclAST : public BaseAST {
 public:
+    enum Kind {
+        kConstDecl,
+        kVarDecl
+    };
+    
+    Kind kind;
+    
     std::unique_ptr<BaseAST> constDecl;
+    std::unique_ptr<BaseAST> varDecl;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "DeclAST {\n";
-        ans += tab + "\tconstDecl: " + constDecl->PrintAST(tab + "\t");
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kConstDecl:
+            ans += tab + "\tconstDecl: " + constDecl->PrintAST(tab + "\t");
+            break;
+        case kVarDecl:
+            ans += tab + "\tvarDecl: " + varDecl->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "DeclAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
         ans += tab + "}\n";
         return ans;
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        // 常量的定义，不需要产生IR
-        // TODO 变量的定义
+        if (kind == kConstDecl) {
+            // 常量的定义，不需要产生IR
+        } else
+        if (kind == kVarDecl) {
+            varDecl->PrintIR(tab, buffer);
+        } else {
+            std::cerr << "DeclAST::PrintIR: unknown kind" << std::endl;
+        }
+        
         return "";
     }
 };
@@ -336,30 +388,166 @@ public:
     }
 };
 
-// Stmt: 一条 SysY 语句
-// Stmt ::= 'return' Exp ';';
-// 翻译为: ret var, var是Exp对应的变量
-/**
-*   翻译为:
-*   var = [Exp]
-*   ret var
-*/
-class StmtAST : public BaseAST {
+class VarDeclAST : public BaseAST {
 public:
-    std::unique_ptr<BaseExpAST> exp;
+    int bType;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseAST> > > varDefs;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
-        ans += "StmtAST {\n";
+        ans += "VarDeclAST {\n";
+        switch (bType) { // XXX 把switch改成if else，switch中不能定义变量
+        case 0:
+            ans += tab + "\tbType: int\n";
+            break;
+        default:
+            std::cerr << "VarDeclAST::PrintAST: unknown bType" << std::endl;
+            break;
+        }
+        ans += tab + "\tvarDefs: [\n";
+        for (auto &varDef : *varDefs) {
+            ans += tab + "\t\t" + varDef->PrintAST(tab + "\t\t");
+        }
+        ans += tab + "\t]\n";
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        for (auto &varDef : *varDefs) {
+            varDef->PrintIR(tab, buffer);
+        }
+        return "";
+    }
+};
+
+class VarDefAST : public BaseAST {
+public:
+    enum Kind {
+        kUnInit,
+        kInit
+    };
+
+    Kind kind;
+
+    std::string ident;
+    std::unique_ptr<BaseExpAST> initVal;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "VarDefAST {\n";
+        ans += tab + "\tident: " + ident + "\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kUnInit:
+            ans += tab + "\tkind: unInit\n";
+            break;
+        case kInit:
+            ans += tab + "\tkind: init\n";
+            ans += tab + "\tinitVal: " + initVal->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "VarDefAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        buffer += tab + "@" + ident + " = alloc i32\n"; // TODO lv5 作用域嵌套
+        if (kind == kUnInit) {
+            // do nothing
+        } else
+        if (kind == kInit) {
+            std::string var = initVal->PrintIR(tab, buffer);
+            buffer += tab + "store " + var + ", @" + ident + "\n"; // TODO lv5 作用域嵌套
+        } else {
+            std::cerr << "VarDefAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+class InitValAST : public BaseExpAST {
+public:
+    std::unique_ptr<BaseExpAST> exp;
+
+    int CalcConstExp() const override {
+        return exp->CalcConstExp();
+    }
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "InitValAST {\n";
         ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
         ans += tab + "}\n";
         return ans;
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        // 根据后面计算出来的变量名称
-        std::string var = exp->PrintIR(tab, buffer);
-        buffer += tab + "ret " + var + "\n";
+        std::string var = exp->PrintIR(tab, buffer); // XXX 目前没有检测是否是常量表达式（可以优化）
+        return var;
+    }
+};
+
+// Stmt: 一条 SysY 语句
+// Stmt ::= LVal '=' Exp ';' | 'return' Exp ';';
+// 翻译为: ret var, var是Exp对应的变量
+// 或 TODO
+/**
+*   翻译为:
+*   [Exp]
+*   ret var
+*/
+class StmtAST : public BaseAST {
+public:
+    enum Kind {
+        kAssign,
+        kReturn
+    };
+    
+    Kind kind;
+
+    std::unique_ptr<std::string> lVal;
+    std::unique_ptr<BaseExpAST> exp;
+
+    std::string PrintAST(std::string tab) const override {
+        if (kind == kAssign) {
+            std::string ans = "";
+            ans += "StmtAST {\n";
+            ans += tab + "\tlVal: " + *lVal + "\n";
+            ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            ans += tab + "}\n";
+            return ans;
+        } else {
+            std::string ans = "";
+            ans += "StmtAST {\n";
+            ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            ans += tab + "}\n";
+            return ans;
+        }
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        // [Exp]
+        // store var, @lVal
+        if (kind == kAssign) {
+            std::string var = exp->PrintIR(tab, buffer);
+            if (!symbolTable.HasSymbol(*lVal)) {
+                std::cerr << "StmtAST::PrintIR: symbol " << *lVal << " not found" << std::endl;
+                return "";
+            }
+            buffer += tab + "store " + var + ", @" + *lVal + "\n"; // TODO lv5 作用域嵌套
+        } else
+        // [Exp]
+        // ret var
+        if (kind == kReturn) {
+            // 根据后面计算出来的变量名称
+            std::string var = exp->PrintIR(tab, buffer);
+            buffer += tab + "ret " + var + "\n";
+        } else {
+            std::cerr << "StmtAST::PrintIR: unknown kind" << std::endl;
+        }
         return "";
     }
 };
@@ -446,6 +634,14 @@ public:
             return exp->CalcConstExp();
         } else
         if (kind == kLVal) {
+            if (!symbolTable.HasSymbol(*lVal)) {
+                std::cerr << "PrimaryExpAST::CalcConstExp: symbol " << *lVal << " not found" << std::endl;
+                return 0;
+            }
+            if (symbolTable.GetSymbolType(*lVal) != SymbolTable::Symbol::kConst) {
+                std::cerr << "PrimaryExpAST::CalcConstExp: symbol " << *lVal << " is not a const" << std::endl;
+                return 0;
+            }
             return symbolTable.GetConstSymbolValue(*lVal);
         } else
         if (kind == kNumber) {
@@ -491,7 +687,9 @@ public:
                 return std::to_string(symbolTable.GetConstSymbolValue(*lVal));
             } else 
             if (symbolTable.GetSymbolType(*lVal) == SymbolTable::Symbol::kVar) {
-                return *lVal;
+                std::string now = NewTempSymbol();
+                buffer += tab + now + " = load @" + *lVal + "\n"; // TODO lv5 作用域嵌套
+                return now;
             } else {
                 std::cerr << "PrimaryExpAST::PrintIR: unknown symbol type" << std::endl;
                 break;

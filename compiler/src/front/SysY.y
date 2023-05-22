@@ -45,15 +45,15 @@ using namespace std;
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义, 分别对应 ast_val 和 int_val
-%type <ast_val> FuncDef FuncType Block BlockItem Decl ConstDecl ConstDef Stmt
-%type <expAst_val> ConstInitVal ConstExp Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
-%type <ast_list> BlockItems ConstDefs
+%type <ast_val> FuncDef FuncType Block BlockItem Decl ConstDecl ConstDef VarDecl VarDef Stmt
+%type <expAst_val> ConstInitVal ConstExp InitVal Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
+%type <ast_list> BlockItems ConstDefs VarDefs
 %type <str_val> LVal
 %type <int_val> BType Number
 
 %%
 
-// CompUnit ::= FuncDef
+// CompUnit ::= FuncDef;
 // 之前我们定义了 FuncDef 会返回一个 ast_val
 // 而 parser 一旦解析完 CompUnit, 就说明所有的 token 都被解析了, 即解析结束了
 // 此时我们应该把 FuncDef 返回的结果收集起来, 作为 AST 传给调用 parser 的函数
@@ -80,7 +80,7 @@ FuncDef
     }
     ;
 
-// FuncType ::= INT
+// FuncType ::= INT;
 FuncType
     : INT {
         auto ast = new FuncTypeAST();
@@ -89,7 +89,7 @@ FuncType
     }
     ;
 
-// Block :== '{' BlockItems '}'
+// Block :== '{' BlockItems '}';
 Block
     : '{' '}' {
         auto ast = new BlockAST();
@@ -103,7 +103,7 @@ Block
     }
     ;
 
-// BlockItems ::= %empty | BlockItems BlockItem
+// BlockItems ::= %empty | BlockItems BlockItem;
 BlockItems
     : BlockItem {
         auto ast_list = new vector<unique_ptr<BaseAST> >();
@@ -117,17 +117,15 @@ BlockItems
     }
     ;
 
-// BlockItem ::= Decl | Stmt
+// BlockItem ::= Decl | Stmt;
 BlockItem
     : Decl {
-        // TODO
         auto ast = new BlockItemAST();
         ast->kind = BlockItemAST::kDecl;
         ast->decl = unique_ptr<BaseAST>($1);
         $$ = ast;
     }
     | Stmt {
-        // TODO
         auto ast = new BlockItemAST();
         ast->kind = BlockItemAST::kStmt;
         ast->stmt = unique_ptr<BaseAST>($1);
@@ -135,17 +133,24 @@ BlockItem
     }
     ;
 
-// Decl ::= ConstDecl
+// Decl ::= ConstDecl | VarDecl;
 Decl
     : ConstDecl {
         auto ast = new DeclAST();
+        ast->kind = DeclAST::kConstDecl;
         ast->constDecl = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    | VarDecl {
+        auto ast = new DeclAST();
+        ast->kind = DeclAST::kVarDecl;
+        ast->varDecl = unique_ptr<BaseAST>($1);
         $$ = ast;
     }
     ;
 
-// ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";"
-// (ConstDecl ::= "const" BType ConstDefs ';')
+// ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";";
+// (ConstDecl ::= "const" BType ConstDefs ';';)
 ConstDecl
     : CONST BType ConstDefs ';' {
         auto ast = new ConstDeclAST();
@@ -162,7 +167,7 @@ BType
     }
     ;
 
-// (ConstDefs ::= ConstDef | ConstDefs ',')
+// (ConstDefs ::= ConstDef | ConstDefs ',';)
 ConstDefs
     : ConstDef {
         auto ast_list = new vector<unique_ptr<BaseAST> >();
@@ -176,19 +181,19 @@ ConstDefs
     }
     ;
 
-// ConstDef ::= IDENT '=' ConstInitVal
+// ConstDef ::= IDENT '=' ConstInitVal;
 ConstDef
     : IDENT '=' ConstInitVal {
         auto ast = new ConstDefAST();
         ast->ident = *unique_ptr<string>($1);
         ast->constInitVal = unique_ptr<BaseExpAST>($3);
         // 将常量定义插入符号表
-        symbolTable.AddConstSymbol(ast->ident, ast->constInitVal->CalcConstExp()); // XXX union 能否直接赋值？
+        symbolTable.AddConstSymbol(ast->ident, ast->constInitVal->CalcConstExp());
         $$ = ast;
     }
     ;
 
-// ConstInitVal ::= ConstExp
+// ConstInitVal ::= ConstExp;
 ConstInitVal
     : ConstExp {
         auto ast = new ConstInitValAST();
@@ -197,10 +202,73 @@ ConstInitVal
     }
     ;
 
-// Stmt ::= 'return' Exp ';';
+// VarDecl ::= BType VarDef {"," VarDef} ";";
+// (VarDecl ::= BType VarDefs ';';)
+VarDecl
+    : BType VarDefs ';' {
+        auto ast = new VarDeclAST();
+        ast->bType = $1;
+        ast->varDefs = unique_ptr<vector<unique_ptr<BaseAST> > >($2);
+        $$ = ast;
+    }
+    ;
+
+// VarDefs ::= VarDef | VarDefs ',' VarDef;
+VarDefs
+    : VarDef {
+        auto ast_list = new vector<unique_ptr<BaseAST> >();
+        ast_list->push_back(unique_ptr<BaseAST>($1));
+        $$ = ast_list;
+    }
+    | VarDefs ',' VarDef {
+        auto ast_list = $1; // XXX 这里没用 unique_ptr
+        ast_list->push_back(unique_ptr<BaseAST>($3));
+        $$ = ast_list;
+    }
+    ;
+
+// VarDef ::= IDENT | IDENT '=' InitVal;
+VarDef
+    : IDENT {
+        auto ast = new VarDefAST();
+        ast->kind = VarDefAST::kUnInit;
+        ast->ident = *unique_ptr<string>($1);
+        // 将变量定义插入符号表
+        symbolTable.AddVarSymbol(ast->ident);
+        $$ = ast;
+    }
+    | IDENT '=' InitVal {
+        auto ast = new VarDefAST();
+        ast->kind = VarDefAST::kInit;
+        ast->ident = *unique_ptr<string>($1);
+        ast->initVal = unique_ptr<BaseExpAST>($3);
+        // 将变量定义插入符号表
+        symbolTable.AddVarSymbol(ast->ident);
+        $$ = ast;
+    }
+    ;
+
+// InitVal ::= Exp;
+InitVal
+    : Exp {
+        auto ast = new InitValAST();
+        ast->exp = unique_ptr<BaseExpAST>($1);
+        $$ = ast;
+    }
+    ;
+
+// Stmt ::= LVal '=' Exp ';' | 'return' Exp ';';
 Stmt
-    : RETURN Exp ';' {
+    : LVal '=' Exp ';' {
         auto ast = new StmtAST();
+        ast->kind = StmtAST::kAssign;
+        ast->lVal = unique_ptr<string>($1);
+        ast->exp = unique_ptr<BaseExpAST>($3);
+        $$ = ast;
+    }
+    | RETURN Exp ';' {
+        auto ast = new StmtAST();
+        ast->kind = StmtAST::kReturn;
         ast->exp = unique_ptr<BaseExpAST>($2);
         $$ = ast;
     }
@@ -292,7 +360,7 @@ UnaryExp
     }
     ;
 
-// MulExp ::= UnaryExp | MulExp ('*' | '/' | '%') UnaryExp
+// MulExp ::= UnaryExp | MulExp ('*' | '/' | '%') UnaryExp;
 MulExp
     : UnaryExp {
         auto ast = new MulExpAST();
@@ -323,7 +391,7 @@ MulExp
     }
     ;
 
-// AddExp ::= MulExp | AddExp ('+' | '-') MulExp
+// AddExp ::= MulExp | AddExp ('+' | '-') MulExp;
 AddExp
     : MulExp {
         auto ast = new AddExpAST();
@@ -347,7 +415,7 @@ AddExp
     }
     ;
 
-// RelExp ::= AddExp | RelExp ('<' | '>' | '<=' | '>=') AddExp
+// RelExp ::= AddExp | RelExp ('<' | '>' | '<=' | '>=') AddExp;
 RelExp
     : AddExp {
         auto ast = new RelExpAST();
@@ -385,7 +453,7 @@ RelExp
     }
     ;
 
-// EqExp ::= RelExp | EqExp ('==' | '!=') Rel
+// EqExp ::= RelExp | EqExp ('==' | '!=') Rel;
 EqExp
     : RelExp {
         auto ast = new EqExpAST();
@@ -409,7 +477,7 @@ EqExp
     }
     ;
 
-// LAndExp ::= EqExp | LAndExp '&&' EqExp
+// LAndExp ::= EqExp | LAndExp '&&' EqExp;
 LAndExp
     : EqExp {
         auto ast = new LAndExpAST();
@@ -426,7 +494,7 @@ LAndExp
     }
     ;
 
-// LOrExp ::= LAndExp | LOrExp '||' LAndExp
+// LOrExp ::= LAndExp | LOrExp '||' LAndExp;
 LOrExp
     : LAndExp {
         auto ast = new LOrExpAST();
