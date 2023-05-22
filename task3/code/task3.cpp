@@ -69,7 +69,7 @@ int course[110][110];
 int course_cnt;  // hash表的长度
 int Insert(int s[]) {
     int now = 0;
-    while (s[now]) {
+    while (s[now] != 0) {
         course[course_cnt][now] = s[now];
         now = now + 1;
     }
@@ -78,12 +78,14 @@ int Insert(int s[]) {
 }
 int GetLen(int s[]) {
     int len = 0;
-    while (s[len] != 0)
+    while (s[len] != 0) {
         len = len + 1;
+    }
     return len;
 }
 int comp(int s1[], int s2[]) {
-    int len1 = GetLen(s1), len2 = GetLen(s2);
+    int len1 = GetLen(s1);
+    int len2 = GetLen(s2);
     if (len1 != len2) {
         return 0;
     }
@@ -98,35 +100,37 @@ int comp(int s1[], int s2[]) {
 }
 int Find(int s[]) {
     int i = 0;
-    int* ss = s;
     while (i < course_cnt) {
-        if (comp(ss, course[i])) {
+        if (comp(s, course[i])) {
             return i;
         }
         i = i + 1;
     }
-    return Insert(ss);
+    return Insert(s);
 }
 
 // 按照输入顺序存储课程
 int course_input[110];
 // 将当前课程的信息保存下来
 void Prework(int line[]) {
-    if (GetLen(line) == 0) return;
+    if (GetLen(line) == 0) {
+        return;
+    }
     // 找当前课程 第1个|之前
     int now[110] = {0};
     int tmp = 0;
-    while (*line != '|') {
+    int i = 0;
+    while (line[i] != '|') {
         now[0] = now[0] + 1;
         tmp = now[0];
-        now[tmp] = *line;
-        line = line + 1;
+        now[tmp] = line[i];
+        i = i + 1;
     }
 
     now[0] = now[0] + 1;
     tmp = now[0];
     now[tmp] = 0;
-    line = line + 1; 
+    i = i + 1; 
 
 
     int index = Find(now + 1);
@@ -135,20 +139,20 @@ void Prework(int line[]) {
     course_input[tmp] = index;
 
     // 当前课程的学分 1~2个|之间
-    credit[index] = *line - '0';
-    line = line + 2;
+    credit[index] = line[i] - '0';
+    i = i + 2;
 
     // 当前课程的依赖课程 2~3个|之间
-    while (*line && *line != '|') {
+    while (line[i] != 0 && line[i] != '|') {
         // 一组依赖课程
-        while (*line && *line != ';' && *line != '|') {
+        while (line[i] != 0 && line[i] != ';' && line[i] != '|') {
             // 一门依赖课程
             now[0] = 0;
-            while (*line && *line != ',' && *line != ';' && *line != '|') {
+            while (line[i] != 0 && line[i] != ',' && line[i] != ';' && line[i] != '|') {
                 now[0] = now[0] + 1;
                 tmp = now[0];
-                now[tmp] = *line;
-                line = line + 1;
+                now[tmp] = line[i];
+                i = i + 1;
             }
             now[0] = now[0] + 1;
             tmp = now[0];
@@ -158,28 +162,29 @@ void Prework(int line[]) {
             need[index][count][0] = need[index][count][0] + 1;
             tmp = need[index][count][0];
             need[index][count][tmp] = Find(now + 1);
-            if (*line == ';' || *line == '|') break;
-            line = line + 1;
+            if (line[i] == ';' || line[i] == '|') break;
+            i = i + 1;
         }
         cnt[index] = cnt[index] + 1;
-        if (*line == '|') break;
-        line = line + 1;
+        if (line[i] == '|') break;
+        i = i + 1;
     }
-    if (*line) line = line + 1;
+    if (line[i] != 0) i = i + 1;
 
     // 当前课程的得分
-    if (*line == 'A')
+    if (line[i] == 'A') {
         grade[index] = 4;
-    else if (*line == 'B')
+    } else if (line[i] == 'B') {
         grade[index] = 3;
-    else if (*line == 'C')
+    } else if (line[i] == 'C') {
         grade[index] = 2;
-    else if (*line == 'D')
+    } else if (line[i] == 'D') {
         grade[index] = 1;
-    else if (*line == 'F')
+    } else if (line[i] == 'F') {
         grade[index] = 0;
-    else
+    } else {
         grade[index] = -1;
+    }
 }
 
 // 输出GPA
@@ -235,7 +240,7 @@ void PrintAttemped() {
             i = i + 1;
             continue;
         }
-        sum_credit += credit[i];
+        sum_credit = sum_credit + credit[i];
         i = i + 1;
     }
     putchar('H');

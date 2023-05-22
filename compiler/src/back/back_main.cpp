@@ -834,13 +834,17 @@ int32_t Visit_Inst_Jump(const koopa_raw_jump_t &jump){
 int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
     // printf("-----------Visit_Inst_Call ----------\n");
 
+    // 将a0~a7压栈
+    cout << "\taddi sp, sp, -32\n";
+    for(int i = 0; i <= 7; i++){
+        cout << "\tsw   a" << i << ", " << i*4 << "(sp)\n";
+    }
+
 	koopa_raw_function_t callee = call.callee;
 	koopa_raw_slice_t args = call.args;
     const struct koopa_raw_type_kind * ret = callee->ty->data.function.ret;
     koopa_raw_type_tag_t ret_type = ret->tag;
     // printf("return value type = %d\n", ret_type);
-
-    bool need_reload[10] = {0};
 
     for (size_t i = 0; i < args.len; ++i) {
         if(i >= 8) {
@@ -858,11 +862,8 @@ int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
                 // value是整数指令
                 cout << "\tli   a" << i <<  ", " << Visit_Inst_Integer(value->kind.data.integer) << "\n";
             } else if(value->kind.tag == KOOPA_RVT_FUNC_ARG_REF){
-                // value是函数参数, 需要临时保存到s寄存器中
+                // value是函数参数
                 int index = Visit_Inst_Func_Arg_Ref(value->kind.data.func_arg_ref);
-                need_reload[index] = true;
-                // 把a[index]保存到s[index]中
-                cout << "\tmv   s" << index << ", a" << index << "\n";
                 cout << "\tmv   a" << i <<  ", a" << index << "\n"; 
             } else{
                 // 其他情况, value一定在内存中
@@ -879,16 +880,19 @@ int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
     // 调用函数
     cout << "\tcall " << callee->name+1 << "\n";
     
+    // 先恢复栈指针
+    cout << "\taddi sp, sp, 32\n";
+    
     // 返回值为int32时, 需要保留返回值到栈中
     if(ret_type == KOOPA_RTT_INT32){
         cout << "\tsw   a0, " << use_stack << "(sp)\n";
         use_stack += 4; 
     }
 
-    // 恢复函数参数
-    for(int i = 0; i < 8; i++)
-        if(need_reload[i])
-            cout << "\tmv   a" << i << ", s" << i << "\n";
+    // 恢复函数参数a0~a7
+    for(int i = 0; i <= 7; i++){
+        cout << "\tlw   a" << i << ", " << i*4-32 << "(sp)\n";
+    }
     cout << "\n";
     return ret_type == KOOPA_RTT_INT32 ? 0 : use_stack-4;
 }
