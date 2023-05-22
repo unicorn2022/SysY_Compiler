@@ -31,14 +31,14 @@ public:
     }
 
     // 插入变量符号定义
-    void AddVarSymbol(std::string name) {
+    void AddVarSymbol(std::string name, int var_val) {
         if (table.find(name) != table.end()) {
             std::cerr << "SymbolTable::AddSymbol: symbol " << name << " already exists" << std::endl;
             return;
         }
         Symbol symbol;
         symbol.type = Symbol::kVar;
-        symbol.val.var_val = 0; // TODO lv5 变量的值
+        symbol.val.var_val = var_val;
         table[name] = symbol;
     }
 
@@ -82,7 +82,93 @@ private:
     std::map<std::string, Symbol> table;
 };
 
-extern SymbolTable symbolTable;
+class NestedSymbolTable {
+public:
+    NestedSymbolTable() = default;
+    ~NestedSymbolTable() = default;
+
+    void AddTable() {
+        tables.emplace_back();
+    }
+    void DropTable() {
+        if (tables.size() == 0) {
+            std::cerr << "NestedSymbolTable::DropTable: no table to drop" << std::endl;
+            return;
+        }
+        tables.pop_back();
+    }
+
+    void AddConstSymbol(std::string name, int const_val) {
+        if (tables.size() == 0) {
+            std::cerr << "NestedSymbolTable::AddConstSymbol: no table to add" << std::endl;
+            return;
+        }
+        if (tables.back().HasSymbol(name)) { // 当前作用域不允许重复定义
+            std::cerr << "NestedSymbolTable::AddConstSymbol: symbol " << name << " already exists" << std::endl;
+            return;
+        }
+        tables.back().AddConstSymbol(name, const_val);
+    }
+
+    void AddVarSymbol(std::string name) {
+        if (tables.size() == 0) {
+            std::cerr << "NestedSymbolTable::AddVarSymbol: no table to add" << std::endl;
+            return;
+        }
+        if (tables.back().HasSymbol(name)) { // 当前作用域不允许重复定义
+            std::cerr << "NestedSymbolTable::AddVarSymbol: symbol " << name << " already exists" << std::endl;
+            return;
+        }
+        tables.back().AddVarSymbol(name, varSymbolCount[name]);
+        varSymbolCount[name]++;
+    }
+
+    bool HasSymbol(std::string name) {
+        for (auto it = tables.rbegin(); it != tables.rend(); it++) {
+            if (it->HasSymbol(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    SymbolTable::Symbol::Type GetSymbolType(std::string name) {
+        for (auto it = tables.rbegin(); it != tables.rend(); it++) {
+            if (it->HasSymbol(name)) {
+                return it->GetSymbolType(name);
+            }
+        }
+        std::cerr << "NestedSymbolTable::GetSymbolType: symbol " << name << " not found" << std::endl;
+        return SymbolTable::Symbol::kVar; // XXX 没有意义（因为此时说明不存在该 Symbol），只是为了不报错
+    }
+
+    int GetConstSymbolValue(std::string name) {
+        for (auto it = tables.rbegin(); it != tables.rend(); it++) {
+            if (it->HasSymbol(name)) {
+                return it->GetConstSymbolValue(name);
+            }
+        }
+        std::cerr << "NestedSymbolTable::GetConstSymbolValue: symbol " << name << " not found" << std::endl;
+        return 0;
+    }
+
+    int GetVarSymbolValue(std::string name) {
+        for (auto it = tables.rbegin(); it != tables.rend(); it++) {
+            if (it->HasSymbol(name)) {
+                return it->GetVarSymbolValue(name);
+            }
+        }
+        std::cerr << "NestedSymbolTable::GetVarSymbolValue: symbol " << name << " not found" << std::endl;
+        return 0;
+    }
+private:
+    std::vector<SymbolTable> tables;
+    // 变量符号的计数器，用于生成唯一的变量名
+    // 第一个变量名应该生成为 %ident_0，第二个应该为 %ident_1，以此类推
+    std::map<std::string, int> varSymbolCount;
+};
+
+extern NestedSymbolTable symbolTable;
 
 // TODO lv5 作用域中需要支持嵌套的符号表
 
@@ -159,6 +245,7 @@ public:
         buffer += tab + "fun @" + ident + "():";
         func_type->PrintIR(tab, buffer);
         buffer += tab + "{\n";
+        buffer += tab + "\%entry:\n";
 
         // 函数的代码块
         block->PrintIR(tab, buffer);
@@ -206,8 +293,12 @@ public:
         std::string ans = "";
         ans += "BlockAST {\n";
         ans += tab + "\tblockItems: [\n";
-        for (auto &blockItem : *blockItems) {
-            ans += tab + "\t\t" + blockItem->PrintAST(tab + "\t\t");
+        if (blockItems == nullptr) {
+            ans += tab + "\t\tNULL\n";
+        } else {
+            for (auto &blockItem : *blockItems) {
+                ans += tab + "\t\t" + blockItem->PrintAST(tab + "\t\t");
+            }
         }
         ans += tab + "\t]\n";
         ans += tab + "}\n";
@@ -215,8 +306,9 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        // TODO lv5 作用域
-        buffer += tab + "\%entry:\n";
+        if (blockItems == nullptr) {
+            return "";
+        }
         for (auto &blockItem : *blockItems) {
             blockItem->PrintIR(tab + "\t", buffer);
         }
@@ -454,13 +546,13 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        buffer += tab + "@" + ident + " = alloc i32\n"; // TODO lv5 作用域嵌套
+        buffer += tab + "@" + ident + " = alloc i32\n";
         if (kind == kUnInit) {
             // do nothing
         } else
         if (kind == kInit) {
             std::string var = initVal->PrintIR(tab, buffer);
-            buffer += tab + "store " + var + ", @" + ident + "\n"; // TODO lv5 作用域嵌套
+            buffer += tab + "store " + var + ", @" + ident + "\n";
         } else {
             std::cerr << "VarDefAST::PrintIR: unknown kind" << std::endl;
         }
@@ -496,50 +588,75 @@ public:
 // 或 TODO
 /**
 *   翻译为:
-*   [Exp]
+*   Exp
 *   ret var
 */
 class StmtAST : public BaseAST {
 public:
     enum Kind {
         kAssign,
+        kExp,
+        kBlock,
         kReturn
     };
     
     Kind kind;
 
-    std::unique_ptr<std::string> lVal;
-    std::unique_ptr<BaseExpAST> exp;
+    std::string lVal;
+    std::unique_ptr<BaseExpAST> exp; // 在 kExp 类型中，可以为 nullptr
+    std::unique_ptr<BaseAST> block;
 
     std::string PrintAST(std::string tab) const override {
         if (kind == kAssign) {
             std::string ans = "";
             ans += "StmtAST {\n";
-            ans += tab + "\tlVal: " + *lVal + "\n";
+            ans += tab + "\tlVal: " + lVal + "\n";
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             ans += tab + "}\n";
             return ans;
-        } else {
+        } else
+        if (kind == kExp) {
+            std::string ans = "";
+            ans += "StmtAST {\n";
+            ans += tab + "\texp: " + (exp == nullptr ? "NULL\n" : exp->PrintAST(tab + "\t"));
+            ans += tab + "}\n";
+            return ans;
+        } else
+        if (kind == kBlock) {
+            std::string ans = "";
+            ans += "StmtAST {\n";
+            ans += tab + "\tblock: " + block->PrintAST(tab + "\t");
+            ans += tab + "}\n";
+            return ans;
+        } else
+        if (kind == kReturn) {
             std::string ans = "";
             ans += "StmtAST {\n";
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             ans += tab + "}\n";
             return ans;
+        } else {
+            std::cerr << "StmtAST::PrintAST: unknown kind" << std::endl;
+            return "";
         }
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        // [Exp]
+        // Exp
         // store var, @lVal
         if (kind == kAssign) {
             std::string var = exp->PrintIR(tab, buffer);
-            if (!symbolTable.HasSymbol(*lVal)) {
-                std::cerr << "StmtAST::PrintIR: symbol " << *lVal << " not found" << std::endl;
-                return "";
-            }
-            buffer += tab + "store " + var + ", @" + *lVal + "\n"; // TODO lv5 作用域嵌套
+            buffer += tab + "store " + var + ", @" + lVal + "\n";
         } else
-        // [Exp]
+        // Exp
+        if (kind == kExp) {
+            if (exp != nullptr) exp->PrintIR(tab, buffer);
+        } else
+        // Block
+        if (kind == kBlock) {
+            block->PrintIR(tab, buffer);
+        } else
+        // Exp
         // ret var
         if (kind == kReturn) {
             // 根据后面计算出来的变量名称
@@ -611,11 +728,7 @@ public:
 
 // PrimaryExpAST: 表达式中优先计算的部分, 即被'()'包裹的表达式/标识符/单个数字
 // PrimaryExp ::= "(" Exp ")" | LVal | Number;
-/**
-*   翻译为:
-*   1. [Exp]
-*   2. Number
-*/
+// LVal 就是变量标识符，常量会被直接替换为 Number
 class PrimaryExpAST : public BaseExpAST {
 public:
     enum Kind {
@@ -626,7 +739,7 @@ public:
 
     Kind kind;
     std::unique_ptr<BaseExpAST> exp;
-    std::unique_ptr<std::string> lVal;
+    std::string lVal;
     int number;
 
     int CalcConstExp() const override {
@@ -634,15 +747,8 @@ public:
             return exp->CalcConstExp();
         } else
         if (kind == kLVal) {
-            if (!symbolTable.HasSymbol(*lVal)) {
-                std::cerr << "PrimaryExpAST::CalcConstExp: symbol " << *lVal << " not found" << std::endl;
-                return 0;
-            }
-            if (symbolTable.GetSymbolType(*lVal) != SymbolTable::Symbol::kConst) {
-                std::cerr << "PrimaryExpAST::CalcConstExp: symbol " << *lVal << " is not a const" << std::endl;
-                return 0;
-            }
-            return symbolTable.GetConstSymbolValue(*lVal);
+            std::cerr << "PrimaryExpAST::CalcConstExp: lVal is not a const" << std::endl;
+            return 0;
         } else
         if (kind == kNumber) {
             return number;
@@ -660,7 +766,7 @@ public:
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             break;
         case kLVal:
-            ans += tab + "\tLVal: " + *lVal + "\n";
+            ans += tab + "\tLVal: " + lVal + "\n";
             break;
         case kNumber:
             ans += tab + "\tnumber: " + std::to_string(number) + "\n";
@@ -674,33 +780,18 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
-        case kExp:
+        if (kind == kExp) {
             return exp->PrintIR(tab, buffer);
-            break;
-        case kLVal:
-            if (!symbolTable.HasSymbol(*lVal)) {
-                std::cerr << "PrimaryExpAST::PrintIR: symbol " << *lVal << " not found" << std::endl;
-                break;
-            }
-            if (symbolTable.GetSymbolType(*lVal) == SymbolTable::Symbol::kConst) {
-                return std::to_string(symbolTable.GetConstSymbolValue(*lVal));
-            } else 
-            if (symbolTable.GetSymbolType(*lVal) == SymbolTable::Symbol::kVar) {
-                std::string now = NewTempSymbol();
-                buffer += tab + now + " = load @" + *lVal + "\n"; // TODO lv5 作用域嵌套
-                return now;
-            } else {
-                std::cerr << "PrimaryExpAST::PrintIR: unknown symbol type" << std::endl;
-                break;
-            }
-            break;
-        case kNumber:
+        } else
+        if (kind == kLVal) {
+            std::string now = NewTempSymbol();
+            buffer += tab + now + " = load @" + lVal + "\n";
+            return now;
+        } else
+        if (kind == kNumber) {
             return std::to_string(number);
-            break;
-        default:
+        } else {
             std::cerr << "PrimaryExpAST::PrintIR: unknown kind" << std::endl;
-            break;
         }
         return "";
     }

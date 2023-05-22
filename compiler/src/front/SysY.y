@@ -14,7 +14,7 @@
 #include "AST.hpp"
 
 // 用于存储符号表
-SymbolTable symbolTable;
+NestedSymbolTable symbolTable;
 
 // 声明 lexer 函数和错误处理函数
 int yylex();
@@ -50,6 +50,9 @@ using namespace std;
 %type <ast_list> BlockItems ConstDefs VarDefs
 %type <str_val> LVal
 %type <int_val> BType Number
+
+// 无返回类型的终结符
+// BlockBeg BlockEnd
 
 %%
 
@@ -96,10 +99,26 @@ Block
         ast->blockItems = nullptr;
         $$ = ast;
     }
-    | '{' BlockItems '}' {
+    | BlockBeg BlockItems BlockEnd {
         auto ast = new BlockAST();
         ast->blockItems = unique_ptr<vector<unique_ptr<BaseAST> > >($2);
         $$ = ast;
+    }
+    ;
+
+// BlockBeg ::= '{';
+// 进入代码块，创建新的符号表
+BlockBeg
+    : '{' {
+        symbolTable.AddTable();
+    }
+    ;
+
+// BlockEnd ::= '}';
+// 退出代码块，删除当前符号表
+BlockEnd
+    : '}' {
+        symbolTable.DropTable();
     }
     ;
 
@@ -235,6 +254,11 @@ VarDef
         ast->ident = *unique_ptr<string>($1);
         // 将变量定义插入符号表
         symbolTable.AddVarSymbol(ast->ident);
+
+        // 变量名后面加上序号
+        int id = symbolTable.GetVarSymbolValue(ast->ident);
+        ast->ident += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+        
         $$ = ast;
     }
     | IDENT '=' InitVal {
@@ -244,6 +268,11 @@ VarDef
         ast->initVal = unique_ptr<BaseExpAST>($3);
         // 将变量定义插入符号表
         symbolTable.AddVarSymbol(ast->ident);
+        
+        // 变量名后面加上序号
+        int id = symbolTable.GetVarSymbolValue(ast->ident);
+        ast->ident += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+
         $$ = ast;
     }
     ;
@@ -257,13 +286,37 @@ InitVal
     }
     ;
 
-// Stmt ::= LVal '=' Exp ';' | 'return' Exp ';';
+// Stmt ::= LVal '=' Exp ';' | [Exp] ';' | Block | 'return' Exp ';';
+// (Stmt ::= LVal '=' Exp ';' | ';' | Exp ';' | Block | RETURN Exp ';';)
 Stmt
     : LVal '=' Exp ';' {
         auto ast = new StmtAST();
         ast->kind = StmtAST::kAssign;
-        ast->lVal = unique_ptr<string>($1);
+        ast->lVal = *unique_ptr<string>($1);
+
+        // 变量名后面加上序号
+        int id = symbolTable.GetVarSymbolValue(ast->lVal);
+        ast->lVal += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+
         ast->exp = unique_ptr<BaseExpAST>($3);
+        $$ = ast;
+    }
+    | ';' {
+        auto ast = new StmtAST();
+        ast->kind = StmtAST::kExp;
+        ast->exp = nullptr;
+        $$ = ast;
+    }
+    | Exp ';' {
+        auto ast = new StmtAST();
+        ast->kind = StmtAST::kExp;
+        ast->exp = unique_ptr<BaseExpAST>($1);
+        $$ = ast;
+    }
+    | Block {
+        auto ast = new StmtAST();
+        ast->kind = StmtAST::kBlock;
+        ast->block = unique_ptr<BaseAST>($1);
         $$ = ast;
     }
     | RETURN Exp ';' {
@@ -304,8 +357,24 @@ PrimaryExp
     }
     | LVal {
         auto ast = new PrimaryExpAST();
-        ast->kind = PrimaryExpAST::kLVal;
-        ast->lVal = unique_ptr<string>($1);
+        ast->lVal = *unique_ptr<string>($1);
+
+        // LVal 是常量标识符，直接替换为常量值
+        if (symbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kConst) {
+            ast->kind = PrimaryExpAST::kNumber;
+            ast->number = symbolTable.GetConstSymbolValue(ast->lVal);
+        } else
+        // LVal 是变量标识符，替换为变量名
+        if (symbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kVar) {
+            ast->kind = PrimaryExpAST::kLVal;
+
+            // 变量名后面加上序号
+            int id = symbolTable.GetVarSymbolValue(ast->lVal);
+            ast->lVal += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+        } else {
+            std::cerr << "error: " << ast->lVal << " is not a variable or constant" << std::endl;
+        }
+
         $$ = ast;
     }
     | Number {

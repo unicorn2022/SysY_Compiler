@@ -1,21 +1,4 @@
-fun @half(@x: i32): i32 {
-%entry_half:
-	%x = alloc i32
-	store @x, %x
-	%0 = load %x
-	%1 = div %0, 2
-	ret %1
->>>>>>> ef57a65c2473830cf76aecb7d2e84222842df06f
-}
-
-fun @f(@x: i32): i32 {
-%entry_f:
-	%0 = call @half(@x)
-  	ret %0
-}
-
 fun @main(): i32 {
-%entry_main:
-	%0 = call @f(1)
-	ret %0
+%entry:
+	ret 0
 }
