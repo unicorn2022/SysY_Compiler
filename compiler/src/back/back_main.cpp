@@ -603,8 +603,18 @@ int32_t Visit_Inst_Get_Ptr(const koopa_raw_get_ptr_t &get_ptr){
         // assert(0);
     }
     
+    // index
+    if(index->kind.tag == KOOPA_RVT_INTEGER){
+        // index 为整数指令
+        cout << "\tli   t1, " << Visit_Inst_Integer(index->kind.data.integer) << "\n"; 
+    } else if(index->kind.tag == KOOPA_RVT_FUNC_ARG_REF){
+        // index 为函数参数
+        cout << "\tmv   t1, a" << Visit_Inst_Func_Arg_Ref(index->kind.data.func_arg_ref) << "\n"; 
+    } else{
+        // index 在内存中, 将其lw到t1中
+        cout << "\tlw   t1, " << Visit_Inst(index) << "(sp)\n";
+    }
     // index * len
-    cout << "\tli   t1, " << Visit_Inst(index) << "\n";
     cout << "\tli   t2, " << len * 4 << "\n";
     cout << "\tmul  t1, t1, t2\n";
     // get_ptr的结果为: src + index * len
