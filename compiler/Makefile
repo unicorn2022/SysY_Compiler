@@ -111,7 +111,7 @@ run:
 	ld.lld ./test/task.o -L $$CDE_LIBRARY_PATH/riscv32 -lsysy -o ./test/task
 	qemu-riscv32-static ./test/task
 
-LEVEL = 5
+LEVEL = 6
 test-riscv:
 	autotest -riscv -s lv$(LEVEL) ./
 

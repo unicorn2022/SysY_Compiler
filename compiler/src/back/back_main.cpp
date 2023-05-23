@@ -13,6 +13,26 @@ using namespace std;
 
 ofstream fout;
 
+const char KIND_TAG_TO_TYPE[17][40] = {
+    "Integer constant               ",
+    "Zero initializer               ",
+    "Undefined value                ",
+    "Aggregate constant             ",
+    "Function argument reference    ",
+    "Basic block argument reference ",
+    "Local memory allocation        ",
+    "Global memory allocation       ",
+    "Memory load                    ",
+    "Memory store                   ",
+    "Pointer calculation            ",
+    "Element pointer calculation    ",
+    "Binary operation               ",
+    "Conditional branch             ",
+    "Unconditional jump             ",
+    "Function call                  ",
+    "Function return                "
+};
+
 void back_main(const char input[], const char output[]){
     // freopen(output, "w", stdout);
 
@@ -20,11 +40,14 @@ void back_main(const char input[], const char output[]){
     ifstream fin(input);
     std::istreambuf_iterator<char> beg(fin), end;
     std::string IRTree(beg, end);
+    fin.close();
+
+
+    // 定义output文件
     fout = ofstream(output);
-
-
     // 解析KoopaIR
     GetKoopaIR(IRTree.c_str());
+    fout.close();
 }
 
 // 从文本IR中解析KoopaIR, 生成raw program
@@ -108,6 +131,8 @@ void Visit_Slice(const koopa_raw_slice_t &slice) {
 /*====================  函数部分 =======================*/ 
 // 当前函数已经使用的栈的大小(单位: 字节)
 int32_t use_stack = 0;
+// 进入当前函数时, 使用的栈的大小(单位: 字节)
+int32_t need_stack = 0;
 
 // 访问函数
 void Visit_Function(const koopa_raw_function_t &func) {
@@ -127,7 +152,7 @@ void Visit_Function(const koopa_raw_function_t &func) {
     cout << func->name+1 << ":\n";
 
     // 计算当前函数指令可能用到的栈空间大小
-    int32_t need_stack = 4; // 默认保留ra的值
+    need_stack = 4; // 默认保留ra的值
     for (size_t i = 0; i < func->bbs.len; ++i) {
         // 当前func->bbs的内容
         auto ptr = func->bbs.buffer[i];
@@ -259,7 +284,7 @@ int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
 
 // 访问基本块
 void Visit_Basic_Block(const koopa_raw_basic_block_t &bb) {
-    // printf("-----------Visit_Basic_Block---------------\n");
+    printf("\n-----------Visit_Basic_Block, name = %s---------------\n", bb->name+1);
     
     // 输出当前基本块的名成, 标记当前基本块的入口
     // 由于KoopaIR中基本块均为@name, 因此只需要输出name+1即可
@@ -288,7 +313,7 @@ std::map<koopa_raw_value_t, int32_t> inst_to_index;
 int32_t Visit_Inst(const koopa_raw_value_t &value) {
     if(inst_to_index.find(value) != inst_to_index.end()) return inst_to_index[value];
 
-    // printf("-----------Visit_Inst, addr = %llx---------------\n", (unsigned long long)value);
+    printf("Visit_Inst, kind = %s\n", KIND_TAG_TO_TYPE[value->kind.tag]);
 
     // 根据指令类型判断后续需要如何访问
     const auto &kind = value->kind;
@@ -929,10 +954,9 @@ int32_t Visit_Inst_Return(const koopa_raw_return_t &ret){
     }
 
     // 取出返回地址
-    cout << "\tlw   ra, " << use_stack << "(sp)\n";
+    cout << "\tlw   ra, " << need_stack-4 << "(sp)\n";
     // 恢复栈空间
-    use_stack += 4;
-    cout << "\taddi sp, sp, " << use_stack << "\n";
+    cout << "\taddi sp, sp, " << need_stack << "\n";
     // 返回
     cout << "\tret\n";
     cout << "\n";

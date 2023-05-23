@@ -1,26 +1,60 @@
 fun @main(): i32 {
 %entry_main:
-	@x = alloc i32
-	@y = alloc i32
-	store 21, @y
-	%0 = load @y
-	%1 = add %0, 1
-	store %1, @x
-	@z = alloc i32
-	%2 = load @x
-	%3 = sub 147, %2
-	store %3, @z
-	@w = alloc i32
-	%4 = load @y
-	%5 = sub 147, %4
-	store %5, @w
-	%6 = load @w
-	%7 = mul %6, 1
-	%8 = mul %7, 1
-	%9 = mul %8, 1
-	store %9, @w
-	%10 = load @z
-	%11 = load @w
-	%12 = add %10, %11
-	ret %12
+	@a = alloc i32
+	store 0, @a
+	@c = alloc i32
+	store 1, @c
+	@d = alloc i32
+	store 2, @d
+	%0 = load @a
+	%1 = or %0, 0
+	%2 = ne 0, %1
+	br %2, %then, %else
+%then:
+	store 3, @c
+	jump %end
+%else:
+	store 3, @d
+	@a_1 = alloc i32
+	store 1, @a_1
+	%3 = load @a_1
+	%4 = or %3, 0
+	%5 = ne 0, %4
+	br %5, %then_1, %else_1
+%then_1:
+	store 4, @c
+	jump %end_1
+%else_1:
+	store 4, @d
+	jump %end_1
+%end_1:
+	%6 = load @a_1
+	%7 = eq %6, 0
+	br %7, %then_2, %else_2
+%then_2:
+	ret 1
+%else_2:
+	%8 = load @a_1
+	%9 = eq %8, 0
+	%10 = load @a_1
+	%11 = sub 0, 1
+	%12 = eq %10, %11
+	%13 = ne 0, %9
+	%14 = ne 0, %12
+	%15 = and %13, %14
+	br %15, %then_3, %end_3
+%then_3:
+	ret 2
+%end_3:
+	jump %end_2
+%end_2:
+	jump %end
+%end:
+	%16 = load @a
+	%17 = add %16, 0
+	%18 = load @c
+	%19 = add %17, %18
+	%20 = load @d
+	%21 = add %19, %20
+	ret %21
 }

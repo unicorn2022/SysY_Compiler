@@ -34,3 +34,20 @@ make test-koopa LEVEL=4
 
 `LEVEL`为测试的章节数
 
+# 二、调试代码
+
+RISCV输出字符`a\n`
+
+```assembly
+debug_start:
+	addi s0, ra, 0
+	li   a0, 97
+	call putch
+	li   a0, 10
+	call putch
+	addi ra, s0, 0
+	li   a0, 0
+	ret
+debug_end:
+```
+
