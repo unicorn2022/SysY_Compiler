@@ -16,6 +16,9 @@
 // 用于存储符号表
 NestedSymbolTable symbolTable;
 
+// 用于记录 if 语句的出现词序，以生成唯一的标签
+int ifCount = 0;
+
 // 声明 lexer 函数和错误处理函数
 int yylex();
 void yyerror(std::unique_ptr<BaseAST> &ast, const char *s);
@@ -40,16 +43,16 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明（终结符）
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT RETURN CONST LT GT LE GE EQ NE AND OR
+%token INT CONST IF ELSE RETURN LT GT LE GE EQ NE AND OR
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义, 分别对应 ast_val 和 int_val
-%type <ast_val> FuncDef FuncType Block BlockItem Decl ConstDecl ConstDef VarDecl VarDef Stmt
+%type <ast_val> FuncDef FuncType Block BlockItem Decl ConstDecl ConstDef VarDecl VarDef Stmt MatchStmt UnmatchStmt OtherStmt
 %type <expAst_val> ConstInitVal ConstExp InitVal Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
 %type <ast_list> BlockItems ConstDefs VarDefs
 %type <str_val> LVal
-%type <int_val> BType Number
+%type <int_val> BType Number If
 
 // 无返回类型的终结符
 // BlockBeg BlockEnd
@@ -286,12 +289,75 @@ InitVal
     }
     ;
 
-// Stmt ::= LVal '=' Exp ';' | [Exp] ';' | Block | 'return' Exp ';';
-// (Stmt ::= LVal '=' Exp ';' | ';' | Exp ';' | Block | RETURN Exp ';';)
+// Stmt ::= MatchStmt | UnmatchStmt;
 Stmt
-    : LVal '=' Exp ';' {
+    : MatchStmt {
         auto ast = new StmtAST();
-        ast->kind = StmtAST::kAssign;
+        ast->kind = StmtAST::kMatch;
+        ast->matchStmt = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    | UnmatchStmt {
+        auto ast = new StmtAST();
+        ast->kind = StmtAST::kUnmatch;
+        ast->unmatchStmt = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    ;
+
+// MatchStmt ::= "if" '(' Exp ')' MatchStmt "else" MatchStmt | OtherStmt;
+MatchStmt
+    : If '(' Exp ')' MatchStmt ELSE MatchStmt {
+        auto ast = new MatchStmtAST();
+        ast->kind = MatchStmtAST::kIf;
+        ast->ifLabelIndex = $1;
+        ast->exp = unique_ptr<BaseExpAST>($3);
+        ast->matchStmt1 = unique_ptr<BaseAST>($5);
+        ast->matchStmt2 = unique_ptr<BaseAST>($7);
+        $$ = ast;
+    }
+    | OtherStmt {
+        auto ast = new MatchStmtAST();
+        ast->kind = MatchStmtAST::kOther;
+        ast->otherStmt = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    ;
+
+// UnmatchStmt ::= "if" '(' Exp ')' Stmt | "if" '(' Exp ')' MatchStmt "else" UnmatchStmt;
+UnmatchStmt
+    : If '(' Exp ')' Stmt {
+        auto ast = new UnmatchStmtAST();
+        ast->kind = UnmatchStmtAST::kNoElse;
+        ast->ifLabelIndex = $1;
+        ast->exp = unique_ptr<BaseExpAST>($3);
+        ast->stmt = unique_ptr<BaseAST>($5);
+        $$ = ast;
+    }
+    | If '(' Exp ')' MatchStmt ELSE UnmatchStmt {
+        auto ast = new UnmatchStmtAST();
+        ast->kind = UnmatchStmtAST::kElse;
+        ast->ifLabelIndex = $1;
+        ast->exp = unique_ptr<BaseExpAST>($3);
+        ast->matchStmt = unique_ptr<BaseAST>($5);
+        ast->unmatchStmt = unique_ptr<BaseAST>($7);
+        $$ = ast;
+    }
+    ;
+
+// 用于返回 if 语句的唯一标签（以 int 形式返回 if 的出现次序）
+If
+    : IF {
+        $$ = ifCount++;
+    }
+    ;
+
+// OtherStmt ::= LVal '=' Exp ';' | [Exp] ';' | Block | 'return' Exp ';';
+// (OtherStmt ::= LVal '=' Exp ';' | ';' | Exp ';' | Block | RETURN Exp ';';)
+OtherStmt
+    : LVal '=' Exp ';' {
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kAssign;
         ast->lVal = *unique_ptr<string>($1);
 
         // 变量名后面加上序号
@@ -302,26 +368,26 @@ Stmt
         $$ = ast;
     }
     | ';' {
-        auto ast = new StmtAST();
-        ast->kind = StmtAST::kExp;
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kExp;
         ast->exp = nullptr;
         $$ = ast;
     }
     | Exp ';' {
-        auto ast = new StmtAST();
-        ast->kind = StmtAST::kExp;
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kExp;
         ast->exp = unique_ptr<BaseExpAST>($1);
         $$ = ast;
     }
     | Block {
-        auto ast = new StmtAST();
-        ast->kind = StmtAST::kBlock;
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kBlock;
         ast->block = unique_ptr<BaseAST>($1);
         $$ = ast;
     }
     | RETURN Exp ';' {
-        auto ast = new StmtAST();
-        ast->kind = StmtAST::kReturn;
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kReturn;
         ast->exp = unique_ptr<BaseExpAST>($2);
         $$ = ast;
     }
