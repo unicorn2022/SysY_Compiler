@@ -877,7 +877,7 @@ int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
                 cout << "\tmv   a" << i <<  ", a" << index << "\n"; 
             } else{
                 // 其他情况, value一定在内存中
-                cout << "\tlw   a" << i <<  ", " << Visit_Inst(value) << "(sp)\n";
+                cout << "\tlw   a" << i <<  ", " << Visit_Inst(value)+32 << "(sp)\n";
             }
         }
         // 当前args的类型为其他情况
@@ -904,7 +904,7 @@ int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
         cout << "\tlw   a" << i << ", " << i*4-32 << "(sp)\n";
     }
     cout << "\n";
-    return ret_type == KOOPA_RTT_INT32 ? 0 : use_stack-4;
+    return ret_type == KOOPA_RTT_INT32 ? use_stack-4 : 0;
 }
 
 // 访问 return 指令 (tag = 16)

@@ -1,0 +1,16 @@
+decl @getch(): i32
+decl @putch(i32)
+
+global @var = alloc i32, 14
+global @x = alloc i32, 13
+
+fun @main(): i32 {
+%entry:
+  %0 = load @var
+  %1 = load @x
+  %2 = add %0, %1
+  %3 = call @getch()
+  call @putch(%3)
+  call @putch(%3)
+  ret %3
+}

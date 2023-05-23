@@ -6,9 +6,9 @@
 ### 0	编译/运行 RISC-V程序
 
 ```bash
-clang task.S -c -o task.o -target riscv32-unknown-linux-elf -march=rv32im -mabi=ilp32
-ld.lld task.o -L$CDE_LIBRARY_PATH/riscv32 -lsysy -o task
-qemu-riscv32-static task
+clang /root/SysY_Compiler/compiler/test/task.S -c -o /root/SysY_Compiler/compiler/test/task.o -target riscv32-unknown-linux-elf -march=rv32im -mabi=ilp32
+ld.lld /root/SysY_Compiler/compiler/test/task.o -L$CDE_LIBRARY_PATH/riscv32 -lsysy -o /root/SysY_Compiler/compiler/test/task
+qemu-riscv32-static /root/SysY_Compiler/compiler/test/task
 ```
 
 ### 0	后端的结果输出到文件中
@@ -19,8 +19,8 @@ qemu-riscv32-static task
 
 ```bash
 make
-/root/SysY_Compiler/compiler/build/compiler -koopa task.c -o task.koopa
-/root/SysY_Compiler/compiler/build/compiler -riscv task.c -o task.S
+/root/SysY_Compiler/compiler/build/compiler -koopa /root/SysY_Compiler/compiler/test/task.c -o /root/SysY_Compiler/compiler/test/task.koopa
+/root/SysY_Compiler/compiler/build/compiler -riscv /root/SysY_Compiler/compiler/test/task.c -o /root/SysY_Compiler/compiler/test/task.S
 ```
 
 ### 2	自动测试
