@@ -168,9 +168,7 @@ private:
     std::map<std::string, int> varSymbolCount;
 };
 
-extern NestedSymbolTable symbolTable;
-
-// TODO lv5 作用域中需要支持嵌套的符号表
+// extern NestedSymbolTable symbolTable;
 
 /**************** AST ****************/
 
@@ -241,14 +239,16 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
+        std::string funcEntryLabel = "\%entry_" + ident;
+        
         // 函数的定义
         buffer += tab + "fun @" + ident + "():";
         func_type->PrintIR(tab, buffer);
-        buffer += tab + "{\n";
-        buffer += tab + "\%entry:\n";
+        buffer += "{\n";
+        buffer += funcEntryLabel + ":\n";
 
         // 函数的代码块
-        block->PrintIR(tab, buffer);
+        block->PrintIR(tab + '\t', buffer);
 
         // 函数结尾
         buffer += tab + "}\n";
@@ -309,10 +309,15 @@ public:
         if (blockItems == nullptr) {
             return "";
         }
+        std::string ret;
         for (auto &blockItem : *blockItems) {
-            blockItem->PrintIR(tab + "\t", buffer);
+            ret = blockItem->PrintIR(tab, buffer);
+            // 如果是 return 语句，提前返回
+            if (ret == "return") {
+                break;
+            }
         }
-        return "";
+        return ret; // 返回最后一个语句的返回值，可能是 return
     }
 };
 
@@ -348,10 +353,10 @@ public:
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
         if (kind == kDecl) {
-            decl->PrintIR(tab, buffer);
+            return decl->PrintIR(tab, buffer);
         } else
         if (kind == kStmt) {
-            stmt->PrintIR(tab, buffer);
+            return stmt->PrintIR(tab, buffer); // 可能会返回 "return"
         } else {
             std::cerr << "BlockItemAST::PrintIR: unknown kind" << std::endl;
         }
@@ -582,16 +587,208 @@ public:
     }
 };
 
-// Stmt: 一条 SysY 语句
-// Stmt ::= LVal '=' Exp ';' | 'return' Exp ';';
+class StmtAST : public BaseAST {
+public:
+    enum Kind {
+        kMatch,
+        kUnmatch,
+    };
+
+    Kind kind;
+
+    std::unique_ptr<BaseAST> matchStmt;
+    std::unique_ptr<BaseAST> unmatchStmt;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "StmtAST {\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kMatch:
+            ans += tab + "\tkind: match\n";
+            ans += tab + "\tmatchStmt: " + matchStmt->PrintAST(tab + "\t");
+            break;
+        case kUnmatch:
+            ans += tab + "\tkind: unmatch\n";
+            ans += tab + "\tunmatchStmt: " + unmatchStmt->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "StmtAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        if (kind == kMatch) {
+            return matchStmt->PrintIR(tab, buffer);
+        } else
+        if (kind == kUnmatch) {
+            return unmatchStmt->PrintIR(tab, buffer);
+        } else {
+            std::cerr << "StmtAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+class MatchStmtAST : public BaseAST {
+public:
+    enum Kind {
+        kIf,
+        kOther
+    };
+
+    Kind kind;
+    
+    std::unique_ptr<BaseExpAST> exp;
+    std::unique_ptr<BaseAST> matchStmt1, matchStmt2;
+    std::unique_ptr<BaseAST> otherStmt;
+    int ifLabelIndex;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "MatchStmtAST {\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kIf:
+            ans += tab + "\tkind: if\n";
+            ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            ans += tab + "\tmatchStmt1: " + matchStmt1->PrintAST(tab + "\t");
+            ans += tab + "\tmatchStmt2: " + matchStmt2->PrintAST(tab + "\t");
+            break;
+        case kOther:
+            ans += tab + "\tkind: other\n";
+            ans += tab + "\totherStmt: " + otherStmt->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "MatchStmtAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        if (kind == kIf) {
+            std::string thenLabel = "\%then" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string elseLabel = "\%else" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string endLabel = "\%end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+
+            // if 的条件判断部分
+            std::string var = exp->PrintIR(tab, buffer);
+            buffer += tab + "br " + var + ", " + thenLabel + ", " + elseLabel + "\n";
+            // if 语句的 if 分支
+            buffer += thenLabel + ":\n";
+            if (matchStmt1->PrintIR(tab, buffer) != "return") {
+                buffer += tab + "jump " + endLabel + "\n";
+            }
+            // if 语句的 else 分支
+            buffer += elseLabel + ":\n";
+            if (matchStmt2->PrintIR(tab, buffer) != "return") {
+                buffer += tab + "jump " + endLabel + "\n";
+            }
+            // if 语句之后的内容（的标号）
+            buffer += endLabel + ":\n";
+        } else
+        if (kind == kOther) {
+            return otherStmt->PrintIR(tab, buffer);
+        } else {
+            std::cerr << "MatchStmtAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+class UnmatchStmtAST : public BaseAST {
+public:
+    enum Kind {
+        kNoElse,
+        kElse
+    };
+
+    Kind kind;
+
+    std::unique_ptr<BaseExpAST> exp;
+    std::unique_ptr<BaseAST> stmt;
+    std::unique_ptr<BaseAST> matchStmt;
+    std::unique_ptr<BaseAST> unmatchStmt;
+    int ifLabelIndex;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "UnmatchStmtAST {\n";
+        switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
+        case kNoElse:
+            ans += tab + "\tkind: noElse\n";
+            ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            ans += tab + "\tstmt: " + stmt->PrintAST(tab + "\t");
+            break;
+        case kElse:
+            ans += tab + "\tkind: else\n";
+            ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            ans += tab + "\tmatchStmt: " + matchStmt->PrintAST(tab + "\t");
+            ans += tab + "\tunmatchStmt: " + unmatchStmt->PrintAST(tab + "\t");
+            break;
+        default:
+            std::cerr << "UnmatchStmtAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override {
+        if (kind == kNoElse) {
+            std::string thenLabel = "\%then" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string endLabel = "\%end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+
+            // if 的条件判断部分
+            std::string var = exp->PrintIR(tab, buffer);
+            buffer += tab + "br " + var + ", " + thenLabel + ", " + endLabel + "\n";
+            // if 语句的 if 分支
+            buffer += thenLabel + ":\n";
+            if (stmt->PrintIR(tab, buffer) != "return") {
+                buffer += tab + "jump " + endLabel + "\n";
+            }
+            // if 语句之后的内容（的标号）
+            buffer += endLabel + ":\n";
+        } else
+        if (kind == kElse) {
+            std::string thenLabel = "\%then" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string elseLabel = "\%else" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string endLabel = "\%end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+
+            // if 的条件判断部分
+            std::string var = exp->PrintIR(tab, buffer);
+            buffer += tab + "br " + var + ", " + thenLabel + ", " + elseLabel + "\n";
+            // if 语句的 if 分支
+            buffer += thenLabel + ":\n";
+            if (matchStmt->PrintIR(tab, buffer) != "return") {
+                buffer += tab + "jump " + endLabel + "\n";
+            }
+            // if 语句的 else 分支
+            buffer += elseLabel + ":\n";
+            unmatchStmt->PrintIR(tab, buffer); // UnmatchStmt 不会以 return 结尾，一定会跳转，所以不需要判断返回值
+            buffer += tab + "jump " + endLabel + "\n";
+            // if 语句之后的内容（的标号）
+            buffer += endLabel + ":\n";
+        } else {
+            std::cerr << "UnmatchStmtAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+// OtherStmt: 不是条件分支的 SysY 语句
+// TODO OtherStmt ::=
 // 翻译为: ret var, var是Exp对应的变量
-// 或 TODO
+// TODO 或
 /**
 *   翻译为:
 *   Exp
 *   ret var
 */
-class StmtAST : public BaseAST {
+class OtherStmtAST : public BaseAST {
 public:
     enum Kind {
         kAssign,
@@ -609,7 +806,7 @@ public:
     std::string PrintAST(std::string tab) const override {
         if (kind == kAssign) {
             std::string ans = "";
-            ans += "StmtAST {\n";
+            ans += "OtherStmtAST {\n";
             ans += tab + "\tlVal: " + lVal + "\n";
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             ans += tab + "}\n";
@@ -617,26 +814,26 @@ public:
         } else
         if (kind == kExp) {
             std::string ans = "";
-            ans += "StmtAST {\n";
+            ans += "OtherStmtAST {\n";
             ans += tab + "\texp: " + (exp == nullptr ? "NULL\n" : exp->PrintAST(tab + "\t"));
             ans += tab + "}\n";
             return ans;
         } else
         if (kind == kBlock) {
             std::string ans = "";
-            ans += "StmtAST {\n";
+            ans += "OtherStmtAST {\n";
             ans += tab + "\tblock: " + block->PrintAST(tab + "\t");
             ans += tab + "}\n";
             return ans;
         } else
         if (kind == kReturn) {
             std::string ans = "";
-            ans += "StmtAST {\n";
+            ans += "OtherStmtAST {\n";
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             ans += tab + "}\n";
             return ans;
         } else {
-            std::cerr << "StmtAST::PrintAST: unknown kind" << std::endl;
+            std::cerr << "OtherStmtAST::PrintAST: unknown kind" << std::endl;
             return "";
         }
     }
@@ -654,7 +851,7 @@ public:
         } else
         // Block
         if (kind == kBlock) {
-            block->PrintIR(tab, buffer);
+            return block->PrintIR(tab, buffer);
         } else
         // Exp
         // ret var
@@ -662,8 +859,9 @@ public:
             // 根据后面计算出来的变量名称
             std::string var = exp->PrintIR(tab, buffer);
             buffer += tab + "ret " + var + "\n";
+            return "return"; // 返回 return，说明该基本块以 return 语句结尾，语句块结尾不能加 br、jump 等
         } else {
-            std::cerr << "StmtAST::PrintIR: unknown kind" << std::endl;
+            std::cerr << "OtherStmtAST::PrintIR: unknown kind" << std::endl;
         }
         return "";
     }
