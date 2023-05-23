@@ -100,14 +100,22 @@ $(BUILD_DIR)/%.tab$(FB_EXT): $(SRC_DIR)/%.y
 clean:
 	-rm -rf $(BUILD_DIR)
 
-riscv:
-	/root/SysY_Compiler/compiler/build/compiler -riscv /root/SysY_Compiler/compiler/test/task.c -o /root/SysY_Compiler/compiler/test/task.S
-
 koopa:
-	/root/SysY_Compiler/compiler/build/compiler -koopa /root/SysY_Compiler/compiler/test/task.c -o /root/SysY_Compiler/compiler/test/task.koopa
+	./build/compiler -koopa ./test/task.c -o ./test/task.koopa
+
+riscv:
+	./build/compiler -riscv ./test/task.c -o ./test/task.S
 
 run:
-	clang /root/SysY_Compiler/compiler/test/task.S -c -o /root/SysY_Compiler/compiler/test/task.o -target riscv32-unknown-linux-elf -march=rv32im -mabi=ilp32
-	ld.lld /root/SysY_Compiler/compiler/test/task.o -L $$CDE_LIBRARY_PATH/riscv32 -lsysy -o /root/SysY_Compiler/compiler/test/task
-	qemu-riscv32-static /root/SysY_Compiler/compiler/test/task
+	clang ./test/task.S -c -o ./test/task.o -target riscv32-unknown-linux-elf -march=rv32im -mabi=ilp32
+	ld.lld ./test/task.o -L $$CDE_LIBRARY_PATH/riscv32 -lsysy -o ./test/task
+	qemu-riscv32-static ./test/task
+
+LEVEL = 5
+test-riscv:
+	autotest -riscv -s lv$(LEVEL) ./
+
+test-koopa:
+	autotest -koopa -s lv$(LEVEL) ./
+
 -include $(DEPS)
