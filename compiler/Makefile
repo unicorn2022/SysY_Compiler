@@ -95,9 +95,27 @@ $(BUILD_DIR)/%.tab$(FB_EXT): $(SRC_DIR)/%.y
 	$(BISON) $(BFLAGS) -o $@ $<
 
 
-.PHONY: clean
+.PHONY: clean riscv
 
 clean:
 	-rm -rf $(BUILD_DIR)
+
+koopa:
+	./build/compiler -koopa ./test/task.c -o ./test/task.koopa
+
+riscv:
+	./build/compiler -riscv ./test/task.c -o ./test/task.S
+
+run:
+	clang ./test/task.S -c -o ./test/task.o -target riscv32-unknown-linux-elf -march=rv32im -mabi=ilp32
+	ld.lld ./test/task.o -L $$CDE_LIBRARY_PATH/riscv32 -lsysy -o ./test/task
+	qemu-riscv32-static ./test/task
+
+LEVEL = 6
+test-riscv:
+	autotest -riscv -s lv$(LEVEL) ./
+
+test-koopa:
+	autotest -koopa -s lv$(LEVEL) ./
 
 -include $(DEPS)

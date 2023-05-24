@@ -1,45 +1,53 @@
 # SysY_Compiler
+
 2023春夏编译原理课程大作业
 
-## 可能会用到的指令
+## 一、使用方法
 
-### 0	编译/运行 RISC-V程序
-
-```bash
-clang task.S -c -o task.o -target riscv32-unknown-linux-elf -march=rv32im -mabi=ilp32
-ld.lld task.o -L$CDE_LIBRARY_PATH/riscv32 -lsysy -o task
-qemu-riscv32-static task
-```
-
-### 0	后端的结果输出到文件中
-
-在`back_main.cpp`中，将`#define cout fout`取消注释，即可将结果输出到`output[]`对应的文件中
-
-### 1	运行项目
+### 1.1	编译项目
 
 ```bash
 make
-/root/SysY_Compiler/compiler/build/compiler -koopa task.c -o task.koopa
-/root/SysY_Compiler/compiler/build/compiler -riscv task.c -o task.S
 ```
 
-### 2	自动测试
-
-#### 2.1	第1章
+### 1.2	运行项目，生成koopa/riscv文件
 
 ```bash
-autotest -koopa -s lv1 /root/SysY_Compiler/compiler/
+make koopa
+make riscv
 ```
 
-#### 2.2	第2章
+生成的文件在：`SysY_Compiler/compiler/test/`中
+
+### 1.3	运行RISCV文件
 
 ```bash
-autotest -riscv -s lv2 /root/SysY_Compiler/compiler/
+make run
 ```
 
-#### 2.3	第3章
+### 1.4	自动测试
 
 ```bash
-autotest -riscv -s lv3 /root/SysY_Compiler/compiler/
+make test-riscv LEVEL=6
+make test-koopa LEVEL=4
+```
+
+`LEVEL`为测试的章节数
+
+# 二、调试代码
+
+RISCV输出字符`a\n`
+
+```assembly
+debug_start:
+	addi s0, ra, 0
+	li   a0, 97
+	call putch
+	li   a0, 10
+	call putch
+	addi ra, s0, 0
+	li   a0, 0
+	ret
+debug_end:
 ```
 
