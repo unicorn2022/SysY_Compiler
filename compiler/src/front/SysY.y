@@ -19,6 +19,12 @@ NestedSymbolTable symbolTable;
 // 用于记录 if 语句的出现词序，以生成唯一的标签
 int ifCount = 0;
 
+// 用于记录 while 语句的出现词序，以生成唯一的标签
+int whileCount = 0;
+
+// 用于记录 while 嵌套中各层的 while 标号，以生成 break/continue 的跳转语句
+std::vector<int> nestedWhileIndex;
+
 // 声明 lexer 函数和错误处理函数
 int yylex();
 void yyerror(std::unique_ptr<BaseAST> &ast, const char *s);
@@ -43,7 +49,7 @@ using namespace std;
 
 // lexer 返回的所有 token 种类的声明（终结符）
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT CONST IF ELSE RETURN LT GT LE GE EQ NE AND OR
+%token INT CONST IF ELSE WHILE BREAK CONTINUE RETURN LT GT LE GE EQ NE AND OR
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
@@ -52,7 +58,7 @@ using namespace std;
 %type <expAst_val> ConstInitVal ConstExp InitVal Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
 %type <ast_list> BlockItems ConstDefs VarDefs
 %type <str_val> LVal
-%type <int_val> BType Number If
+%type <int_val> BType Number If While
 
 // 无返回类型的终结符
 // BlockBeg BlockEnd
@@ -355,19 +361,7 @@ If
 // OtherStmt ::= LVal '=' Exp ';' | [Exp] ';' | Block | 'return' Exp ';';
 // (OtherStmt ::= LVal '=' Exp ';' | ';' | Exp ';' | Block | RETURN Exp ';';)
 OtherStmt
-    : LVal '=' Exp ';' {
-        auto ast = new OtherStmtAST();
-        ast->kind = OtherStmtAST::kAssign;
-        ast->lVal = *unique_ptr<string>($1);
-
-        // 变量名后面加上序号
-        int id = symbolTable.GetVarSymbolValue(ast->lVal);
-        ast->lVal += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
-
-        ast->exp = unique_ptr<BaseExpAST>($3);
-        $$ = ast;
-    }
-    | ';' {
+    : ';' {
         auto ast = new OtherStmtAST();
         ast->kind = OtherStmtAST::kExp;
         ast->exp = nullptr;
@@ -379,10 +373,37 @@ OtherStmt
         ast->exp = unique_ptr<BaseExpAST>($1);
         $$ = ast;
     }
-    | Block {
+    | LVal '=' Exp ';' {
         auto ast = new OtherStmtAST();
-        ast->kind = OtherStmtAST::kBlock;
-        ast->block = unique_ptr<BaseAST>($1);
+        ast->kind = OtherStmtAST::kAssign;
+        ast->lVal = *unique_ptr<string>($1);
+
+        // 变量名后面加上序号
+        int id = symbolTable.GetVarSymbolValue(ast->lVal);
+        ast->lVal += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+
+        ast->exp = unique_ptr<BaseExpAST>($3);
+        $$ = ast;
+    }
+    | While '(' Exp ')' Stmt {
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kWhile;
+        ast->whileIndex = $1;
+        ast->exp = unique_ptr<BaseExpAST>($3);
+        ast->stmt = unique_ptr<BaseAST>($5);
+        nestedWhileIndex.pop_back(); // 退出 while 循环，删除当前 while 的序号
+        $$ = ast;
+    }
+    | BREAK ';' {
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kBreak;
+        ast->whileIndex = nestedWhileIndex.back(); // 跳出 while 循环，跳转到最近的 while 循环结尾，所以需要获取最近 while 的标号
+        $$ = ast;
+    }
+    | CONTINUE ';' {
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kContinue;
+        ast->whileIndex = nestedWhileIndex.back(); // 跳出 while 循环，跳转到最近的 while 循环判断，所以需要获取最近 while 的标号
         $$ = ast;
     }
     | RETURN Exp ';' {
@@ -391,7 +412,19 @@ OtherStmt
         ast->exp = unique_ptr<BaseExpAST>($2);
         $$ = ast;
     }
+    | Block {
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kBlock;
+        ast->block = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
     ;
+
+While
+    : WHILE {
+        nestedWhileIndex.push_back(whileCount); // 进入 while 循环，记录当前 while 的序号
+        $$ = whileCount++;
+    }
 
 // ConstExp ::= Exp;
 ConstExp

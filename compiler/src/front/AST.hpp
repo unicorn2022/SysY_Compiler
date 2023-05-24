@@ -312,12 +312,12 @@ public:
         std::string ret;
         for (auto &blockItem : *blockItems) {
             ret = blockItem->PrintIR(tab, buffer);
-            // 如果是 return 语句，提前返回
-            if (ret == "return") {
+            // 如果是 return、break、continue 语句，提前返回
+            if (ret == "return" || ret == "break" || ret == "continue") {
                 break;
             }
         }
-        return ret; // 返回最后一个语句的返回值，可能是 return
+        return ret; // 返回最后一个语句的返回值，可能是 return、break、continue
     }
 };
 
@@ -672,23 +672,26 @@ public:
         if (kind == kIf) {
             std::string thenLabel = "\%then" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
             std::string elseLabel = "\%else" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
-            std::string endLabel = "\%end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string ifEndLabel = "\%if_end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string stmtRet;
 
             // if 的条件判断部分
             std::string var = exp->PrintIR(tab, buffer);
             buffer += tab + "br " + var + ", " + thenLabel + ", " + elseLabel + "\n";
             // if 语句的 if 分支
             buffer += thenLabel + ":\n";
-            if (matchStmt1->PrintIR(tab, buffer) != "return") {
-                buffer += tab + "jump " + endLabel + "\n";
+            stmtRet = matchStmt1->PrintIR(tab, buffer);
+            if (stmtRet != "return" && stmtRet != "break" && stmtRet != "continue") {
+                buffer += tab + "jump " + ifEndLabel + "\n";
             }
             // if 语句的 else 分支
             buffer += elseLabel + ":\n";
-            if (matchStmt2->PrintIR(tab, buffer) != "return") {
-                buffer += tab + "jump " + endLabel + "\n";
+            stmtRet = matchStmt2->PrintIR(tab, buffer);
+            if (stmtRet != "return" && stmtRet != "break" && stmtRet != "continue") {
+                buffer += tab + "jump " + ifEndLabel + "\n";
             }
             // if 语句之后的内容（的标号）
-            buffer += endLabel + ":\n";
+            buffer += ifEndLabel + ":\n";
         } else
         if (kind == kOther) {
             return otherStmt->PrintIR(tab, buffer);
@@ -740,38 +743,42 @@ public:
     std::string PrintIR(std::string tab, std::string &buffer) const override {
         if (kind == kNoElse) {
             std::string thenLabel = "\%then" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
-            std::string endLabel = "\%end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string ifEndLabel = "\%if_end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string stmtRet;
 
             // if 的条件判断部分
             std::string var = exp->PrintIR(tab, buffer);
-            buffer += tab + "br " + var + ", " + thenLabel + ", " + endLabel + "\n";
+            buffer += tab + "br " + var + ", " + thenLabel + ", " + ifEndLabel + "\n";
             // if 语句的 if 分支
             buffer += thenLabel + ":\n";
-            if (stmt->PrintIR(tab, buffer) != "return") {
-                buffer += tab + "jump " + endLabel + "\n";
+            stmtRet = stmt->PrintIR(tab, buffer);
+            if (stmtRet != "return" && stmtRet != "break" && stmtRet != "continue") {
+                buffer += tab + "jump " + ifEndLabel + "\n";
             }
             // if 语句之后的内容（的标号）
-            buffer += endLabel + ":\n";
+            buffer += ifEndLabel + ":\n";
         } else
         if (kind == kElse) {
             std::string thenLabel = "\%then" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
             std::string elseLabel = "\%else" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
-            std::string endLabel = "\%end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string ifEndLabel = "\%if_end" + (ifLabelIndex == 0 ? "" : "_" + std::to_string(ifLabelIndex));
+            std::string stmtRet;
 
             // if 的条件判断部分
             std::string var = exp->PrintIR(tab, buffer);
             buffer += tab + "br " + var + ", " + thenLabel + ", " + elseLabel + "\n";
             // if 语句的 if 分支
             buffer += thenLabel + ":\n";
-            if (matchStmt->PrintIR(tab, buffer) != "return") {
-                buffer += tab + "jump " + endLabel + "\n";
+            stmtRet = matchStmt->PrintIR(tab, buffer);
+            if (stmtRet != "return" && stmtRet != "break" && stmtRet != "continue") {
+                buffer += tab + "jump " + ifEndLabel + "\n";
             }
             // if 语句的 else 分支
             buffer += elseLabel + ":\n";
             unmatchStmt->PrintIR(tab, buffer); // UnmatchStmt 不会以 return 结尾，一定会跳转，所以不需要判断返回值
-            buffer += tab + "jump " + endLabel + "\n";
+            buffer += tab + "jump " + ifEndLabel + "\n";
             // if 语句之后的内容（的标号）
-            buffer += endLabel + ":\n";
+            buffer += ifEndLabel + ":\n";
         } else {
             std::cerr << "UnmatchStmtAST::PrintIR: unknown kind" << std::endl;
         }
@@ -791,45 +798,80 @@ public:
 class OtherStmtAST : public BaseAST {
 public:
     enum Kind {
-        kAssign,
         kExp,
-        kBlock,
-        kReturn
+        kAssign,
+        kReturn,
+        kWhile,
+        kBreak,
+        kContinue,
+        kBlock
     };
     
     Kind kind;
 
     std::string lVal;
     std::unique_ptr<BaseExpAST> exp; // 在 kExp 类型中，可以为 nullptr
+    int whileIndex; // kWhile、kBreak、kContinue 类型中使用
+    std::unique_ptr<BaseAST> stmt;
     std::unique_ptr<BaseAST> block;
 
     std::string PrintAST(std::string tab) const override {
+        if (kind == kExp) {
+            std::string ans = "";
+            ans += "OtherStmtAST {\n";
+            ans += tab + "\tkind: " + "exp\n";
+            ans += tab + "\texp: " + (exp == nullptr ? "NULL\n" : exp->PrintAST(tab + "\t"));
+            ans += tab + "}\n";
+            return ans;
+        } else
         if (kind == kAssign) {
             std::string ans = "";
             ans += "OtherStmtAST {\n";
+            ans += tab + "\tkind: " + "assign\n";
             ans += tab + "\tlVal: " + lVal + "\n";
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             ans += tab + "}\n";
             return ans;
         } else
-        if (kind == kExp) {
+        if (kind == kWhile) {
             std::string ans = "";
             ans += "OtherStmtAST {\n";
-            ans += tab + "\texp: " + (exp == nullptr ? "NULL\n" : exp->PrintAST(tab + "\t"));
+            ans += tab + "\tkind: " + "while\n";
+            ans += tab + "\twhileIndex: " + std::to_string(whileIndex) + "\n";
+            ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            ans += tab + "\tstmt: " + stmt->PrintAST(tab + "\t");
             ans += tab + "}\n";
             return ans;
         } else
-        if (kind == kBlock) {
+        if (kind == kBreak) {
             std::string ans = "";
             ans += "OtherStmtAST {\n";
-            ans += tab + "\tblock: " + block->PrintAST(tab + "\t");
+            ans += tab + "\tkind: " + "break\n";
+            ans += tab + "\twhileIndex: " + std::to_string(whileIndex) + "\n";
+            ans += tab + "}\n";
+            return ans;
+        } else
+        if (kind == kContinue) {
+            std::string ans = "";
+            ans += "OtherStmtAST {\n";
+            ans += tab + "\tkind: " + "continue\n";
+            ans += tab + "\twhileIndex: " + std::to_string(whileIndex) + "\n";
             ans += tab + "}\n";
             return ans;
         } else
         if (kind == kReturn) {
             std::string ans = "";
             ans += "OtherStmtAST {\n";
+            ans += tab + "\tkind: " + "return\n";
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            ans += tab + "}\n";
+            return ans;
+        } else
+        if (kind == kBlock) {
+            std::string ans = "";
+            ans += "OtherStmtAST {\n";
+            ans += tab + "\tkind: " + "block\n";
+            ans += tab + "\tblock: " + block->PrintAST(tab + "\t");
             ans += tab + "}\n";
             return ans;
         } else {
@@ -840,18 +882,43 @@ public:
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
         // Exp
+        if (kind == kExp) {
+            if (exp != nullptr) exp->PrintIR(tab, buffer);
+        } else
+        // Exp
         // store var, @lVal
         if (kind == kAssign) {
             std::string var = exp->PrintIR(tab, buffer);
             buffer += tab + "store " + var + ", @" + lVal + "\n";
         } else
-        // Exp
-        if (kind == kExp) {
-            if (exp != nullptr) exp->PrintIR(tab, buffer);
+        if (kind == kWhile) {
+            std::string whileEntryLabel = "\%while_entry" + (whileIndex == 0 ? "" : "_" + std::to_string(whileIndex));
+            std::string whileBodyLabel = "\%while_body" + (whileIndex == 0 ? "" : "_" + std::to_string(whileIndex));
+            std::string whileEndLabel = "\%while_end" + (whileIndex == 0 ? "" : "_" + std::to_string(whileIndex));
+            std::string stmtRet;
+
+            // while 循环的入口
+            buffer += tab + "jump " + whileEntryLabel + "\n";
+            buffer += whileEntryLabel + ":\n";
+            buffer += tab + "br " + exp->PrintIR(tab, buffer) + ", " + whileBodyLabel + ", " + whileEndLabel + "\n";
+            // while 循环的循环体
+            buffer += whileBodyLabel + ":\n";
+            stmtRet = stmt->PrintIR(tab, buffer);
+            if (stmtRet != "return" && stmtRet != "break" && stmtRet != "continue") {
+                buffer += tab + "jump " + whileEntryLabel + "\n";
+            }
+            // while 循环的结尾
+            buffer += whileEndLabel + ":\n";
         } else
-        // Block
-        if (kind == kBlock) {
-            return block->PrintIR(tab, buffer);
+        if (kind == kBreak) {
+            std::string whileEndLabel = "\%while_end" + (whileIndex == 0 ? "" : "_" + std::to_string(whileIndex));
+            buffer += tab + "jump " + whileEndLabel + "\n";
+            return "break"; // 返回 break，说明该基本块以 break 语句结尾，语句块结尾不能加 br、jump 等
+        } else
+        if (kind == kContinue) {
+            std::string whileEntryLabel = "\%while_entry" + (whileIndex == 0 ? "" : "_" + std::to_string(whileIndex));
+            buffer += tab + "jump " + whileEntryLabel + "\n";
+            return "continue"; // 返回 continue，说明该基本块以 continue 语句结尾，语句块结尾不能加 br、jump 等
         } else
         // Exp
         // ret var
@@ -860,6 +927,10 @@ public:
             std::string var = exp->PrintIR(tab, buffer);
             buffer += tab + "ret " + var + "\n";
             return "return"; // 返回 return，说明该基本块以 return 语句结尾，语句块结尾不能加 br、jump 等
+        } else
+        // Block
+        if (kind == kBlock) {
+            return block->PrintIR(tab, buffer);
         } else {
             std::cerr << "OtherStmtAST::PrintIR: unknown kind" << std::endl;
         }
