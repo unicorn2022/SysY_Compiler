@@ -13,5 +13,8 @@ using namespace std;
 extern FILE *yyin;
 extern int yyparse(unique_ptr<BaseAST> &ast);
 
+// 全局符号表，用于在 parse 前添加库函数
+extern SymbolTable globalSymbolTable;
+
 void front_main(const char input[], const char output[]);
 
