@@ -1,19 +1,34 @@
+int x, y;
+
+int t() {
+  x = x + 1;
+  return 1;
+}
+
+int f() {
+  y = y + 1;
+  return 0;
+}
+
 int main() {
-  int a = 0;
-  const int b = 1 - 1 * 2 + 1;
-  int c = 1, d = 2;
-  if (a || b) {
-    c = 3;
-  } else {
-    d = 3;
-    int a = 1;
-    if (a || b) {
-      c = 4;
-    } else {
-      d = 4;
-    }
-    if (a == 0) return 1;
-    else if (a == 0 && a == -1) return 2;
-  }
-  return a + b + c + d;
+  int sum = 0;
+  sum = sum + (f() || f());
+  sum = sum + (f() || t());
+  sum = sum + (t() || f());
+  sum = sum + (t() || t());
+  sum = sum + (f() && f());
+  sum = sum + (f() && t());
+  sum = sum + (t() && f());
+  sum = sum + (t() && t());
+  t() || t() && t();
+  f() || t() && t();
+  f() || f() && t();
+  t() && t() || t();
+  f() && t() || t();
+  f() && f() || f();
+  putint(x);
+  putch(32);
+  putint(y);
+  putch(10);
+  return sum;
 }
