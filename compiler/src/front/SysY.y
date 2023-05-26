@@ -119,7 +119,9 @@ GlobalDef
 // 解析完成后, 把这些符号的结果收集起来, 然后拼成一个 FuncDefAST, 作为结果返回
 // $$ 表示非终结符的返回值, 我们可以通过给这个符号赋值的方法来返回结果
 FuncDef
-    : VOID IDENT '(' ')' {globalSymbolTable.AddFuncSymbol(*$2, 0);} Block {
+    : VOID IDENT '(' ')' {
+        globalSymbolTable.AddFuncSymbol(*$2, 0, 0, NULL);
+    } Block {
         auto ast = new FuncDefAST();
         ast->funcType = 0; // 0 表示 void
         ast->ident = *unique_ptr<string>($2);
@@ -130,7 +132,9 @@ FuncDef
         
         $$ = ast;
     }
-    | INT IDENT '(' ')' {globalSymbolTable.AddFuncSymbol(*$2, 1);} Block {
+    | INT IDENT '(' ')' {
+        globalSymbolTable.AddFuncSymbol(*$2, 1, 0, NULL);
+    } Block {
         auto ast = new FuncDefAST();
         ast->funcType = 1; // 1 表示 int
         ast->ident = *unique_ptr<string>($2);
@@ -141,7 +145,17 @@ FuncDef
         
         $$ = ast;
     }
-    | VOID IDENT '(' FuncFParams ')' {globalSymbolTable.AddFuncSymbol(*$2, 0);} Block {
+    | VOID IDENT '(' FuncFParams ')' {
+        vector<unique_ptr<BaseAST> > *fParams = $4;
+
+        int fParamNum = fParams->size();
+        bool *fParamIsArray = new bool[fParamNum];
+        for (int i = 0; i < fParamNum; i++) {
+            auto fParam = static_cast<FuncFParamAST*>((*fParams)[i].get());
+            fParamIsArray[i] = fParam->kind == FuncFParamAST::kIntArray;
+        }
+        globalSymbolTable.AddFuncSymbol(*$2, 0, fParamNum, fParamIsArray);
+    } Block {
         auto ast = new FuncDefAST();
         ast->funcType = 0; // 0 表示 void
         ast->ident = *unique_ptr<string>($2);
@@ -153,7 +167,17 @@ FuncDef
 
         $$ = ast;
     }
-    | INT IDENT '(' FuncFParams ')' {globalSymbolTable.AddFuncSymbol(*$2, 1);} Block {
+    | INT IDENT '(' FuncFParams ')' {
+        vector<unique_ptr<BaseAST> > *fParams = $4;
+        
+        int fParamNum = fParams->size();
+        bool *fParamIsArray = new bool[fParamNum];
+        for (int i = 0; i < fParamNum; i++) {
+            auto fParam = static_cast<FuncFParamAST*>((*fParams)[i].get());
+            fParamIsArray[i] = fParam->kind == FuncFParamAST::kIntArray;
+        }
+        globalSymbolTable.AddFuncSymbol(*$2, 1, fParamNum, fParamIsArray);
+    } Block {
         auto ast = new FuncDefAST();
         ast->funcType = 1; // 1 表示 int
         ast->ident = *unique_ptr<string>($2);
@@ -183,11 +207,37 @@ FuncFParams
 FuncFParam
     : INT IDENT { // XXX BType 确定为 int
         auto ast = new FuncFParamAST();
+        ast->kind = FuncFParamAST::kInt;
         ast->bType = 0;
         ast->ident = *unique_ptr<string>($2);
 
-        symbolTable.AddFParamSymbol(ast->ident); // 添加函数形参符号
+        symbolTable.AddFParamSymbol(ast->ident, -1, 0); // 添加函数形参符号，-1 表示是函数参数
+        ast->ident += "_"; // 函数形参的标识符加上下划线，以区分全局变量
         
+        $$ = ast;
+    }
+    | INT IDENT '[' ']' {
+        auto ast = new FuncFParamAST();
+        ast->kind = FuncFParamAST::kIntArray;
+        ast->bType = 0;
+        ast->ident = *unique_ptr<string>($2);
+        ast->constArrayDims = nullptr;
+
+        symbolTable.AddFParamSymbol(ast->ident, -2, 1); // 添加函数形参符号，-2 表示是数组类型
+        ast->ident += "_"; // 函数形参的标识符加上下划线，以区分全局变量
+
+        $$ = ast;
+    }
+    | INT IDENT '[' ']' ConstArrayDims {
+        auto ast = new FuncFParamAST();
+        ast->kind = FuncFParamAST::kIntArray;
+        ast->bType = 0;
+        ast->ident = *unique_ptr<string>($2);
+        ast->constArrayDims = unique_ptr<vector<unique_ptr<BaseExpAST> > >($5);
+
+        symbolTable.AddFParamSymbol(ast->ident, -2, 1 + ast->constArrayDims->size()); // 添加函数形参符号，-2 表示是数组类型
+        ast->ident += "_"; // 函数形参的标识符加上下划线，以区分全局变量
+
         $$ = ast;
     }
     ;
@@ -363,14 +413,14 @@ VarDef
 
         if (isGlobal) {
             // 将变量定义插入符号表
-            globalSymbolTable.AddVarSymbol(ast->ident, 0);
+            globalSymbolTable.AddVarSymbol(ast->ident, 0, 0);
             // 全局变量名不加序号
         } else {
             // 将变量定义插入符号表
-            symbolTable.AddVarSymbol(ast->ident);
+            symbolTable.AddVarSymbol(ast->ident, 0);
 
             // 变量名后面加上序号
-            int id = symbolTable.GetVarSymbolValue(ast->ident);
+            int id = symbolTable.GetVarSymbolId(ast->ident);
             ast->ident += id == 0 ? "" : "_" + to_string(id); // XXX 不需要 0 了，因为全局变量不加序号，局部变量默认都加序号
                                                             // 原优化：如果序号为0，不加在变量名后面
         }
@@ -387,14 +437,14 @@ VarDef
         // TODO 没有在符号表中区分数组和变量
         if (isGlobal) {
             // 将变量定义插入符号表
-            globalSymbolTable.AddVarSymbol(ast->ident, 0);
+            globalSymbolTable.AddVarSymbol(ast->ident, 0, ast->constArrayDims->size());
             // 全局变量名不加序号
         } else {
             // 将变量定义插入符号表
-            symbolTable.AddVarSymbol(ast->ident);
+            symbolTable.AddVarSymbol(ast->ident, ast->constArrayDims->size());
 
             // 变量名后面加上序号
-            int id = symbolTable.GetVarSymbolValue(ast->ident);
+            int id = symbolTable.GetVarSymbolId(ast->ident);
             ast->ident += id == 0 ? "" : "_" + to_string(id); // XXX 不需要 0 了，因为全局变量不加序号，局部变量默认都加序号
                                                               // 原优化：如果序号为0，不加在变量名后面
         }
@@ -410,14 +460,14 @@ VarDef
 
         if (isGlobal) {
             // 将变量定义插入符号表
-            globalSymbolTable.AddVarSymbol(ast->ident, 0);
+            globalSymbolTable.AddVarSymbol(ast->ident, 0, 0);
             // 全局变量名不加序号
         } else {
             // 将变量定义插入符号表
-            symbolTable.AddVarSymbol(ast->ident);
+            symbolTable.AddVarSymbol(ast->ident, 0);
             
             // 变量名后面加上序号
-            int id = symbolTable.GetVarSymbolValue(ast->ident);
+            int id = symbolTable.GetVarSymbolId(ast->ident);
             ast->ident += id == 0 ? "" : "_" + to_string(id); // XXX 不需要 0 了，因为全局变量不加序号，局部变量默认都加序号
                                                               // 原优化：如果序号为0，不加在变量名后面
         }
@@ -634,10 +684,12 @@ LVal
             if (symbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kConst) {
                 ast->kind = LValAST::kConst;
                 ast->identVal = symbolTable.GetConstSymbolValue(ast->ident);
+                ast->isArrayPtr = false;
             } else
             if (symbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kVar) {
                 ast->kind = LValAST::kVar;
-                ast->identVal = symbolTable.GetVarSymbolValue(ast->ident);
+                ast->identVal = symbolTable.GetVarSymbolId(ast->ident);
+                ast->isArrayPtr = symbolTable.GetVarSymbolDim(ast->ident) > 0;
             } else {
                 std::cerr << "LVal: unknown symbol type" << std::endl;
             }
@@ -647,10 +699,12 @@ LVal
             if (globalSymbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kConst) {
                 ast->kind = LValAST::kConst;
                 ast->identVal = globalSymbolTable.GetConstSymbolValue(ast->ident);
+                ast->isArrayPtr = false;
             } else
             if (globalSymbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kVar) {
                 ast->kind = LValAST::kVar;
-                ast->identVal = globalSymbolTable.GetVarSymbolValue(ast->ident);
+                ast->identVal = globalSymbolTable.GetVarSymbolId(ast->ident);
+                ast->isArrayPtr = globalSymbolTable.GetVarSymbolDim(ast->ident) > 0;
             } else {
                 std::cerr << "LVal: unknown symbol type" << std::endl;
             }
@@ -665,6 +719,7 @@ LVal
         ast->kind = LValAST::kArray;
         ast->ident = *unique_ptr<string>($1);
         ast->arrayDims = unique_ptr<vector<unique_ptr<BaseExpAST> > >($2);
+        ast->isArrayPtr = false;
 
         // XXX 目前数组只有变量
         // 先查找局部标识符
@@ -673,7 +728,8 @@ LVal
                 ast->identVal = symbolTable.GetConstSymbolValue(ast->ident);
             } else
             if (symbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kVar) {
-                ast->identVal = symbolTable.GetVarSymbolValue(ast->ident);
+                ast->identVal = symbolTable.GetVarSymbolId(ast->ident);
+                ast->isArrayPtr = symbolTable.GetVarSymbolDim(ast->ident) > ast->arrayDims->size();
             } else {
                 std::cerr << "LVal: unknown symbol type" << std::endl;
             }
@@ -684,7 +740,8 @@ LVal
                 ast->identVal = globalSymbolTable.GetConstSymbolValue(ast->ident);
             } else
             if (globalSymbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kVar) {
-                ast->identVal = globalSymbolTable.GetVarSymbolValue(ast->ident);
+                ast->identVal = globalSymbolTable.GetVarSymbolId(ast->ident);
+                ast->isArrayPtr = globalSymbolTable.GetVarSymbolDim(ast->ident) > ast->arrayDims->size();
             } else {
                 std::cerr << "LVal: unknown symbol type" << std::endl;
             }
@@ -729,7 +786,9 @@ UnaryExp
         auto ast = new UnaryExpAST();
         ast->kind = UnaryExpAST::kCall;
         ast->ident = *unique_ptr<string>($1);
-        ast->funcType = globalSymbolTable.GetFuncSymbolValue(ast->ident);
+        ast->funcType = globalSymbolTable.GetFuncSymbolType(ast->ident);
+        ast->funcFParamNum = 0;
+        ast->funcFParamIsArray = NULL;
         ast->funcRParams = nullptr;
         $$ = ast;
     }
@@ -737,7 +796,9 @@ UnaryExp
         auto ast = new UnaryExpAST();
         ast->kind = UnaryExpAST::kCall;
         ast->ident = *unique_ptr<string>($1);
-        ast->funcType = globalSymbolTable.GetFuncSymbolValue(ast->ident);
+        ast->funcType = globalSymbolTable.GetFuncSymbolType(ast->ident);
+        ast->funcFParamNum = globalSymbolTable.GetFuncSymbolFParamNum(ast->ident);
+        ast->funcFParamIsArray = globalSymbolTable.GetFuncSymbolFParamIsArray(ast->ident);
         ast->funcRParams = unique_ptr<vector<unique_ptr<BaseExpAST> > >($3);
         $$ = ast;
     }

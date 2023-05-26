@@ -2,6 +2,7 @@
 #include <iostream>
 #include <map>
 #include <vector>
+#include <cstdlib>
 
 /**************** 符号表 ****************/
 
@@ -11,8 +12,15 @@ public:
         enum Type { kConst, kVar, kFunc } type;
         union { // XXX 每种类型的符号要存储的信息不同，且一个简单变量可能存不下，建议改为 struct
             int const_val;
-            int var_val;
-            int func_val; // 0 表示 void，1 表示 int
+            struct VarVal {
+                int var_id;
+                int var_dim; // 数组维数，0 表示非数组
+            } var_val;
+            struct FuncVal {
+                int func_type; // 0 表示 void，1 表示 int
+                int fParamNum; // 参数个数
+                bool *fParamIsArray; // 参数是否为数组（指针）
+            } func_val;
         } val;
     };
 
@@ -36,26 +44,29 @@ public:
     }
 
     // 插入变量符号定义
-    void AddVarSymbol(std::string name, int var_val) {
+    void AddVarSymbol(std::string name, int var_id, int var_dim) {
         if (table.find(name) != table.end()) {
             std::cerr << "SymbolTable::AddSymbol: symbol " << name << " already exists" << std::endl;
             return;
         }
         Symbol symbol;
         symbol.type = Symbol::kVar;
-        symbol.val.var_val = var_val;
+        symbol.val.var_val.var_id = var_id;
+        symbol.val.var_val.var_dim = var_dim;
         table[name] = symbol;
     }
 
     // 插入函数符号定义
-    void AddFuncSymbol(std::string name, int func_val) {
+    void AddFuncSymbol(std::string name, int func_type, int fParamNum, bool *fParamIsArray) {
         if (table.find(name) != table.end()) {
             std::cerr << "SymbolTable::AddSymbol: symbol " << name << " already exists" << std::endl;
             return;
         }
         Symbol symbol;
         symbol.type = Symbol::kFunc;
-        symbol.val.func_val = func_val;
+        symbol.val.func_val.func_type = func_type;
+        symbol.val.func_val.fParamNum = fParamNum;
+        symbol.val.func_val.fParamIsArray = fParamIsArray;
         table[name] = symbol;
     }
 
@@ -74,38 +85,74 @@ public:
 
     int GetConstSymbolValue(std::string name) {
         if (table.find(name) == table.end()) {
-            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " not found" << std::endl;
+            std::cerr << "SymbolTable::GetConstSymbolValue: symbol " << name << " not found" << std::endl;
             return 0;
         }
         if (table[name].type != Symbol::kConst) {
-            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " is not a const" << std::endl;
+            std::cerr << "SymbolTable::GetConstSymbolValue: symbol " << name << " is not a const" << std::endl;
             return 0;
         }
         return table[name].val.const_val;
     }
 
-    int GetVarSymbolValue(std::string name) {
+    int GetVarSymbolId(std::string name) {
         if (table.find(name) == table.end()) {
-            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " not found" << std::endl;
+            std::cerr << "SymbolTable::GetVarSymbolId: symbol " << name << " not found" << std::endl;
             return 0;
         }
         if (table[name].type != Symbol::kVar) {
-            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " is not a var" << std::endl;
+            std::cerr << "SymbolTable::GetVarSymbolId: symbol " << name << " is not a var" << std::endl;
             return 0;
         }
-        return table[name].val.var_val;
+        return table[name].val.var_val.var_id;
     }
 
-    int GetFuncSymbolValue(std::string name) {
+    int GetVarSymbolDim(std::string name) {
         if (table.find(name) == table.end()) {
-            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " not found" << std::endl;
+            std::cerr << "SymbolTable::GetVarSymbolDim: symbol " << name << " not found" << std::endl;
+            return 0;
+        }
+        if (table[name].type != Symbol::kVar) {
+            std::cerr << "SymbolTable::GetVarSymbolDim: symbol " << name << " is not a var" << std::endl;
+            return 0;
+        }
+        return table[name].val.var_val.var_dim;
+    }
+
+    int GetFuncSymbolType(std::string name) {
+        if (table.find(name) == table.end()) {
+            std::cerr << "SymbolTable::GetFuncSymbolType: symbol " << name << " not found" << std::endl;
             return 0;
         }
         if (table[name].type != Symbol::kFunc) {
-            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " is not a func" << std::endl;
+            std::cerr << "SymbolTable::GetFuncSymbolType: symbol " << name << " is not a func" << std::endl;
             return 0;
         }
-        return table[name].val.func_val;
+        return table[name].val.func_val.func_type;
+    }
+
+    int GetFuncSymbolFParamNum(std::string name) {
+        if (table.find(name) == table.end()) {
+            std::cerr << "SymbolTable::GetFuncSymbolFParamNum: symbol " << name << " not found" << std::endl;
+            return 0;
+        }
+        if (table[name].type != Symbol::kFunc) {
+            std::cerr << "SymbolTable::GetFuncSymbolFParamNum: symbol " << name << " is not a func" << std::endl;
+            return 0;
+        }
+        return table[name].val.func_val.fParamNum;
+    }
+
+    bool *GetFuncSymbolFParamIsArray(std::string name) {
+        if (table.find(name) == table.end()) {
+            std::cerr << "SymbolTable::GetFuncSymbolFParamIsArray: symbol " << name << " not found" << std::endl;
+            return nullptr;
+        }
+        if (table[name].type != Symbol::kFunc) {
+            std::cerr << "SymbolTable::GetFuncSymbolFParamIsArray: symbol " << name << " is not a func" << std::endl;
+            return nullptr;
+        }
+        return table[name].val.func_val.fParamIsArray;
     }
 private:
     std::map<std::string, Symbol> table;
@@ -139,7 +186,7 @@ public:
         tables.back().AddConstSymbol(name, const_val);
     }
 
-    void AddVarSymbol(std::string name) {
+    void AddVarSymbol(std::string name, int var_dim) {
         if (tables.size() == 0) {
             std::cerr << "NestedSymbolTable::AddVarSymbol: no table to add" << std::endl;
             return;
@@ -148,16 +195,19 @@ public:
             std::cerr << "NestedSymbolTable::AddVarSymbol: symbol " << name << " already exists" << std::endl;
             return;
         }
-        tables.back().AddVarSymbol(name, varSymbolCount[name] + 1); // 从 1 开始，把 0（没有标号）留给全局变量
+        tables.back().AddVarSymbol(name, varSymbolCount[name] + 1, var_dim); // 从 1 开始，把 0（没有标号）留给全局变量
         varSymbolCount[name]++;
     }
 
-    void AddFParamSymbol(std::string name) {
+    void AddFParamSymbol(std::string name, int func_val, int var_dim) {
         if (fParamTable.HasSymbol(name)) { // 当前作用域不允许重复定义
             std::cerr << "NestedSymbolTable::AddFParamSymbol: symbol " << name << " already exists" << std::endl;
             return;
         }
-        fParamTable.AddVarSymbol(name, -1); // var_val 为 -1，表示是函数参数
+        if (func_val != -1 && func_val != -2) {
+            std::cerr << "NestedSymbolTable::AddFParamSymbol: invalid func_val " << func_val << std::endl;
+        }
+        fParamTable.AddVarSymbol(name, func_val, var_dim);
     }
 
     // 清空函数参数符号表，在结束函数定义时调用
@@ -202,16 +252,29 @@ public:
     }
 
     // 获取变量符号的值，需要提前保证符号存在且类型为变量
-    int GetVarSymbolValue(std::string name) {
+    int GetVarSymbolId(std::string name) {
         if (fParamTable.HasSymbol(name)) {
-            return fParamTable.GetVarSymbolValue(name);
+            return fParamTable.GetVarSymbolId(name);
         }
         for (auto it = tables.rbegin(); it != tables.rend(); it++) {
             if (it->HasSymbol(name)) {
-                return it->GetVarSymbolValue(name);
+                return it->GetVarSymbolId(name);
             }
         }
-        std::cerr << "NestedSymbolTable::GetVarSymbolValue: symbol " << name << " not found" << std::endl;
+        std::cerr << "NestedSymbolTable::GetVarSymbolId: symbol " << name << " not found" << std::endl;
+        return 0;
+    }
+
+    int GetVarSymbolDim(std::string name) {
+        if (fParamTable.HasSymbol(name)) {
+            return fParamTable.GetVarSymbolDim(name);
+        }
+        for (auto it = tables.rbegin(); it != tables.rend(); it++) {
+            if (it->HasSymbol(name)) {
+                return it->GetVarSymbolDim(name);
+            }
+        }
+        std::cerr << "NestedSymbolTable::GetVarSymbolDim: symbol " << name << " not found" << std::endl;
         return 0;
     }
 private:
@@ -351,7 +414,8 @@ public:
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
         std::string funcEntryLabel = "\%entry_" + ident;
-        std::vector<std::string> funcFParamNames; // 存储 funcFParam 的 ident
+        std::vector<std::string> funcFParamIdents; // 存储 funcFParam 的 ident
+        std::vector<std::string> funcFParamTypes; // 存储 funcFParam 的 type
         
         // 函数的头部（函数名）
         buffer += tab + "fun @" + ident + "(";
@@ -361,7 +425,10 @@ public:
             buffer += "";
         } else {
             for (auto &funcFParam : *funcFParams) {
-                funcFParamNames.push_back(funcFParam->PrintIR(tab, buffer));
+                std::string tmp = funcFParam->PrintIR(tab, buffer);
+                auto splitPos = tmp.find("|");
+                funcFParamIdents.push_back(tmp.substr(0, splitPos));
+                funcFParamTypes.push_back(tmp.substr(splitPos+1, tmp.size() - (splitPos+1)));
                 if (funcFParam != funcFParams->back()) {
                     buffer += ", ";
                 }
@@ -384,12 +451,12 @@ public:
         buffer += funcEntryLabel + ":\n";
 
         // 特殊处理形参
-        if (funcType == 1) {
-            for (auto &funcFParamName : funcFParamNames) {
-                buffer += tab + "\t\%fParam_" + funcFParamName + " = alloc i32\n";
-                buffer += tab + "\tstore @" + funcFParamName + ", \%fParam_" + funcFParamName + "\n";
+        // if (funcType == 1) {
+            for (int i = 0; i < funcFParamIdents.size(); i++) {
+                buffer += tab + "\t\%" + funcFParamIdents[i] + "fParam = alloc " + funcFParamTypes[i] + "\n";
+                buffer += tab + "\tstore @" + funcFParamIdents[i] + ", \%" + funcFParamIdents[i] + "fParam\n";
             }
-        }
+        // }
 
         // 函数的代码块
         std::string blockRet = block->PrintIR(tab + '\t', buffer);
@@ -409,10 +476,19 @@ public:
 // FuncFParam ::= Btype IDENT
 class FuncFParamAST : public BaseAST {
 public:
+    enum Kind {
+        kInt,
+        kIntArray
+    };
+
+    Kind kind;
+    
     int bType; // XXX bType 用数字实现，不太好，应该改成枚举
     std::string ident;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseExpAST> > > constArrayDims;
 
     std::string PrintAST(std::string tab) const override {
+        // TODO
         std::string ans = "";
         ans += "FuncFParamAST {\n";
         ans += tab + "\tbType: " + std::to_string(bType) + "\n";
@@ -422,8 +498,29 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        buffer += "@" + ident + ": " + "i32"; // XXX bType 目前只有 int
-        return ident;
+        std::string type;
+        if (kind == kInt) {
+            type = "i32";
+            buffer += "@" + ident + ": " + type; // XXX bType 目前只有 int
+            return ident + "|" + type;
+        } else
+        if (kind == kIntArray) {
+            type = "*";
+            if (constArrayDims == nullptr) {
+                type += "i32";
+            } else {
+                type.append(constArrayDims->size(), '[');
+                type += "i32";
+                for (auto it = constArrayDims->rbegin(); it != constArrayDims->rend(); it++) {
+                    type += ", " + (*it)->PrintIR(tab, buffer) + "]";
+                }
+            }
+            buffer += "@" + ident + ": " + type;
+            return ident + "|" + type;
+        } else {
+            std::cerr << "FuncFParamAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
     }
 };
 
@@ -674,8 +771,8 @@ public:
 
     bool isGlobal;
     std::string ident;
-    std::unique_ptr<std::vector<std::unique_ptr<BaseExpAST> > > constArrayDims; 
     std::unique_ptr<BaseExpAST> initVal;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseExpAST> > > constArrayDims; 
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
@@ -1239,7 +1336,13 @@ public:
         } else
         if (kind == kLVal) {
             std::string lVarName = lVal->PrintIR(tab, buffer);
-            if (lVarName[0] != '@' && lVarName[0] != '%')  { // 不是需要 load 的变量
+            if (lVarName[0] == '*')  { // 不是需要 load 的变量
+                lVarName = lVarName.substr(1);
+                // if (lVarName[1] == '@' || lVarName[1] == '%') { // 不是常量，是数组指针类型的变量
+                //     std::string now = NewTempSymbol();
+                //     buffer += tab + now + " = getelemptr " + lVarName + "\n";
+                //     return now;
+                // }
                 return lVarName;
             } else { // 需要 load 的变量
                 std::string now = NewTempSymbol();
@@ -1269,6 +1372,7 @@ public:
     int identVal; // 标识符在符号表中的值
     std::string ident;
     std::unique_ptr<std::vector<std::unique_ptr<BaseExpAST> > > arrayDims;
+    bool isArrayPtr; // 是否是数组指针
 
     int CalcConstExp() const override {
         if (kind == kConst) {
@@ -1306,27 +1410,63 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
+        // 开头为 *，表示是需要求值的东西（而不是被赋值的变量），且不需要 load
+        
         if (kind == kConst) {
-            return std::to_string(identVal);
+            // 常量不需要 load
+            return "*" + std::to_string(identVal);
         } else
         if (kind == kVar) {
             if (identVal == -1) {
-                return "\%fParam_" + ident;
+                return "\%" + ident + "_fParam";
+            } else
+            if (identVal == -2) { // 是数组指针类型的函数形参
+                std::string now = NewTempSymbol();
+                buffer += tab + now + " = load \%" + ident + "_fParam\n";
+                std::string now2 = NewTempSymbol();
+                buffer += tab + now2 + " = getptr " + now + ", 0\n";
+                return "*" + now2;
             } else {
-                return "@" + ident + (identVal == 0 ? "" : "_" + std::to_string(identVal));
+                std::string var = "@" + ident + (identVal == 0 ? "" : "_" + std::to_string(identVal));
+                // 数组指针不需要 load
+                if (isArrayPtr) {
+                    std::string now = NewTempSymbol();
+                    buffer += tab + now + " = getelemptr " + var + ", 0\n";
+                    return "*" + now;
+                } else {
+                    return var;
+                }
             }
         } else
         if (kind == kArray) {
-            std::string pre = "@" + ident + (identVal == 0 ? "" : "_" + std::to_string(identVal));
+            std::string pre;
+            if (identVal == -2) {
+                std::string fParamIdent = "\%" + ident + "_fParam";
+                pre = NewTempSymbol();
+                buffer += tab + pre + " = load " + fParamIdent + "\n";
+            } else {
+                pre = "@" + ident + (identVal == 0 ? "" : "_" + std::to_string(identVal));
+            }
 
             for (auto &dim : *arrayDims) {
                 std::string var = dim->PrintIR(tab, buffer); // 数组下标
                 std::string now = NewTempSymbol();
-                buffer += tab + now + " = getelemptr " + pre + ", " + var + "\n";
+                // 变量是数组类型的函数形参，且是第一个下标
+                if (identVal == -2 && dim == arrayDims->front()) {
+                    buffer += tab + now + " = getptr " + pre + ", " + var + "\n";
+                } else {
+                    buffer += tab + now + " = getelemptr " + pre + ", " + var + "\n";
+                }
                 pre = now;
             }
 
-            return pre;
+            if (isArrayPtr) { // 数组指针，需要作为函数参数传递
+                std::string now = NewTempSymbol();
+                buffer += tab + now + " = getelemptr " + pre + ", 0\n";
+                return "*" + now;
+            } else {
+                return pre;
+            }
         } else {
             std::cerr << "LValAST::PrintIR: unknown kind" << std::endl;
         }
@@ -1355,6 +1495,8 @@ public:
     std::unique_ptr<BaseExpAST> primaryExp;
     std::string ident;
     int funcType;
+    int funcFParamNum;
+    bool *funcFParamIsArray;
     std::unique_ptr<std::vector<std::unique_ptr<BaseExpAST> > > funcRParams;
     std::unique_ptr<BaseExpAST> unaryExp;
 
@@ -1425,8 +1567,10 @@ public:
                 // 先算出实参列表
                 std::vector<std::string> params;
                 if (funcRParams != nullptr) {
+                    int fParamId = 0;
                     for (auto &paramAST : *funcRParams) {
                         params.push_back(paramAST->PrintIR(tab, buffer));
+                        fParamId++;
                     }
                 }
                 buffer += tab + "call @" + ident + "(";
@@ -1445,8 +1589,10 @@ public:
                 // 先算出实参列表
                 std::vector<std::string> params;
                 if (funcRParams != nullptr) {
+                    int fParamId = 0;
                     for (auto &paramAST : *funcRParams) {
                         params.push_back(paramAST->PrintIR(tab, buffer));
+                        fParamId++;
                     }
                 }
                 std::string now = NewTempSymbol();
