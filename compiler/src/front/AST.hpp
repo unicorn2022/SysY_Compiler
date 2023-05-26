@@ -8,15 +8,20 @@
 class SymbolTable {
 public:
     struct Symbol {
-        enum Type { kConst, kVar } type;
-        union {
+        enum Type { kConst, kVar, kFunc } type;
+        union { // XXX 每种类型的符号要存储的信息不同，且一个简单变量可能存不下，建议改为 struct
             int const_val;
             int var_val;
+            int func_val; // 0 表示 void，1 表示 int
         } val;
     };
 
     SymbolTable() = default;
     ~SymbolTable() = default;
+
+    void Clear() {
+        table.clear();
+    }
 
     // 插入常量符号定义
     void AddConstSymbol(std::string name, int const_val) {
@@ -39,6 +44,18 @@ public:
         Symbol symbol;
         symbol.type = Symbol::kVar;
         symbol.val.var_val = var_val;
+        table[name] = symbol;
+    }
+
+    // 插入函数符号定义
+    void AddFuncSymbol(std::string name, int func_val) {
+        if (table.find(name) != table.end()) {
+            std::cerr << "SymbolTable::AddSymbol: symbol " << name << " already exists" << std::endl;
+            return;
+        }
+        Symbol symbol;
+        symbol.type = Symbol::kFunc;
+        symbol.val.func_val = func_val;
         table[name] = symbol;
     }
 
@@ -77,6 +94,18 @@ public:
             return 0;
         }
         return table[name].val.var_val;
+    }
+
+    int GetFuncSymbolValue(std::string name) {
+        if (table.find(name) == table.end()) {
+            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " not found" << std::endl;
+            return 0;
+        }
+        if (table[name].type != Symbol::kFunc) {
+            std::cerr << "SymbolTable::GetSymbolType: symbol " << name << " is not a func" << std::endl;
+            return 0;
+        }
+        return table[name].val.func_val;
     }
 private:
     std::map<std::string, Symbol> table;
@@ -119,11 +148,27 @@ public:
             std::cerr << "NestedSymbolTable::AddVarSymbol: symbol " << name << " already exists" << std::endl;
             return;
         }
-        tables.back().AddVarSymbol(name, varSymbolCount[name]);
+        tables.back().AddVarSymbol(name, varSymbolCount[name] + 1); // 从 1 开始，把 0（没有标号）留给全局变量
         varSymbolCount[name]++;
     }
 
+    void AddFParamSymbol(std::string name) {
+        if (fParamTable.HasSymbol(name)) { // 当前作用域不允许重复定义
+            std::cerr << "NestedSymbolTable::AddFParamSymbol: symbol " << name << " already exists" << std::endl;
+            return;
+        }
+        fParamTable.AddVarSymbol(name, -1); // var_val 为 -1，表示是函数参数
+    }
+
+    // 清空函数参数符号表，在结束函数定义时调用
+    void ClearFParamTable() {
+        fParamTable.Clear();
+    }
+
     bool HasSymbol(std::string name) {
+        if (fParamTable.HasSymbol(name)) {
+            return true;
+        }
         for (auto it = tables.rbegin(); it != tables.rend(); it++) {
             if (it->HasSymbol(name)) {
                 return true;
@@ -133,6 +178,9 @@ public:
     }
 
     SymbolTable::Symbol::Type GetSymbolType(std::string name) {
+        if (fParamTable.HasSymbol(name)) {
+            return fParamTable.GetSymbolType(name);
+        }
         for (auto it = tables.rbegin(); it != tables.rend(); it++) {
             if (it->HasSymbol(name)) {
                 return it->GetSymbolType(name);
@@ -142,6 +190,7 @@ public:
         return SymbolTable::Symbol::kVar; // XXX 没有意义（因为此时说明不存在该 Symbol），只是为了不报错
     }
 
+    // 获取常量符号的值，需要提前保证符号存在且类型为常量
     int GetConstSymbolValue(std::string name) {
         for (auto it = tables.rbegin(); it != tables.rend(); it++) {
             if (it->HasSymbol(name)) {
@@ -152,7 +201,11 @@ public:
         return 0;
     }
 
+    // 获取变量符号的值，需要提前保证符号存在且类型为变量
     int GetVarSymbolValue(std::string name) {
+        if (fParamTable.HasSymbol(name)) {
+            return fParamTable.GetVarSymbolValue(name);
+        }
         for (auto it = tables.rbegin(); it != tables.rend(); it++) {
             if (it->HasSymbol(name)) {
                 return it->GetVarSymbolValue(name);
@@ -163,6 +216,8 @@ public:
     }
 private:
     std::vector<SymbolTable> tables;
+    // 函数形参符号表，用于特殊处理函数形参
+    SymbolTable fParamTable;
     // 变量符号的计数器，用于生成唯一的变量名
     // 第一个变量名应该生成为 %ident_0，第二个应该为 %ident_1，以此类推
     std::map<std::string, int> varSymbolCount;
@@ -194,28 +249,73 @@ public:
 };
 
 // CompUnit: 起始字符, 表示整个文件
-// CompUnit ::= FuncDef
+// CompUnit ::= GlobalDefs
 class CompUnitAST : public BaseAST {
 public:
     // 用智能指针管理对象
-    std::unique_ptr<BaseAST> func_def;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseAST> > > globalDefs;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
-        ans += "CompUnitAST {\n";
-        ans += tab + "\tfunc_def: " + func_def->PrintAST(tab + "\t");
+        ans += tab + "CompUnitAST {\n";
+        for (auto &globalDef : *globalDefs) {
+            ans += tab + "\t" + globalDef->PrintAST(tab + "\t");
+        }
         ans += tab + "}\n";
         return ans;
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        func_def->PrintIR(tab, buffer);
+        // TODO
+        for (auto &globalDef : *globalDefs) {
+            globalDef->PrintIR(tab, buffer);
+        }
+        return "";
+    }
+};
+
+class GlobalDefAST : public BaseAST {
+public:
+    enum Kind {
+        kFuncDef,
+        kDecl
+    };
+    
+    Kind kind;
+
+    std::unique_ptr<BaseAST> funcDef;
+    std::unique_ptr<BaseAST> decl;
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += tab + "GlobalDefAST {\n";
+        if (kind == kFuncDef) {
+            ans += tab + "\tfuncDef: " + funcDef->PrintAST(tab + "\t");
+        } else
+        if (kind == kDecl) {
+            ans += tab + "\tdecl: " + decl->PrintAST(tab + "\t");
+        } else {
+            std::cerr << "GlobalDefAST::PrintAST: unknown kind" << std::endl;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        if (kind == kFuncDef) {
+            funcDef->PrintIR(tab, buffer);
+        } else
+        if (kind == kDecl) {
+            decl->PrintIR(tab, buffer);
+        } else {
+            std::cerr << "GlobalDefAST::PrintIR: unknown kind" << std::endl;
+        }
         return "";
     }
 };
 
 // FuncDef: 函数定义
-// FuncDef ::= FuncType IDENT '(' ')' Block;
+// FuncDef ::= FuncType IDENT '(' [FuncFParams] ')' Block;
 /**
 *   翻译为:
 *   fun @IDENT (): [FuncType]{
@@ -224,15 +324,27 @@ public:
 */
 class FuncDefAST : public BaseAST {
 public:
-    std::unique_ptr<BaseAST> func_type;
+    int funcType; // 0 表示 void, 1 表示 int
     std::string ident;
+    // 函数参数列表
+    // XXX 没有在符号表中存参数列表，语义分析没有检查函数调用时参数是否匹配
+    std::unique_ptr<std::vector<std::unique_ptr<BaseAST> > > funcFParams;
     std::unique_ptr<BaseAST> block;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
         ans += "FuncDefAST {\n";
-        ans += tab + "\tfunc_type: " + func_type->PrintAST(tab + "\t");
+        ans += tab + "\tfuncType: " + std::to_string(funcType) + "\n";
         ans += tab + "\tident: " + ident + "\n";
+        ans += tab + "\tfuncFParams: {";
+        if (funcFParams == nullptr) {
+            ans += "null";
+        } else {
+            for (auto &funcFParam : *funcFParams) {
+                ans += tab + "\t\t" + funcFParam->PrintAST(tab + "\t\t");
+            }
+        }
+        ans += tab + "\t}\n";
         ans += tab + "\tblock: " + block->PrintAST(tab + "\t");
         ans += tab + "}\n";
         return ans;
@@ -240,15 +352,53 @@ public:
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
         std::string funcEntryLabel = "\%entry_" + ident;
+        std::vector<std::string> funcFParamNames; // 存储 funcFParam 的 ident
         
-        // 函数的定义
-        buffer += tab + "fun @" + ident + "():";
-        func_type->PrintIR(tab, buffer);
-        buffer += "{\n";
+        // 函数的头部（函数名）
+        buffer += tab + "fun @" + ident + "(";
+
+        // 函数的参数
+        if (funcFParams == nullptr) {
+            buffer += "";
+        } else {
+            for (auto &funcFParam : *funcFParams) {
+                funcFParamNames.push_back(funcFParam->PrintIR(tab, buffer));
+                if (funcFParam != funcFParams->back()) {
+                    buffer += ", ";
+                }
+            }
+        }
+        
+        // 函数的类型
+        buffer += ")";
+        if (funcType == 0) {
+            buffer += "";
+        } else
+        if (funcType == 1) {
+            buffer += ": i32";
+        } else {
+            std::cerr << "FuncDefAST::PrintIR: unknown funcType" << std::endl;
+        }
+        buffer += " {\n";
+
+        // 函数的入口
         buffer += funcEntryLabel + ":\n";
 
+        // 特殊处理形参
+        if (funcType == 1) {
+            for (auto &funcFParamName : funcFParamNames) {
+                buffer += tab + "\t\%fParam_" + funcFParamName + " = alloc i32\n";
+                buffer += tab + "\tstore @" + funcFParamName + ", \%fParam_" + funcFParamName + "\n";
+            }
+        }
+
         // 函数的代码块
-        block->PrintIR(tab + '\t', buffer);
+        std::string blockRet = block->PrintIR(tab + '\t', buffer);
+        // void 函数没有 return 语句，需要手动加上 ret
+        // int 函数如果没有 return 语句，不会自动加 ret 0
+        if (funcType == 0 && blockRet != "return") {
+            buffer += tab + "\tret\n";
+        }
 
         // 函数结尾
         buffer += tab + "}\n";
@@ -256,30 +406,25 @@ public:
     }
 };
 
-// FuncType: 函数返回值类型(int)
-// FuncType ::= INT
-/**
-* 翻译为: i32
-*/
-class FuncTypeAST : public BaseAST {
+// FuncFParam: 函数参数
+// FuncFParam ::= Btype IDENT
+class FuncFParamAST : public BaseAST {
 public:
-    std::string type;
+    int bType; // XXX bType 用数字实现，不太好，应该改成枚举
+    std::string ident;
 
     std::string PrintAST(std::string tab) const override {
         std::string ans = "";
-        ans += "FuncTypeAST {\n";
-        ans += tab + "\ttype: " + type + "\n";
+        ans += "FuncFParamAST {\n";
+        ans += tab + "\tbType: " + std::to_string(bType) + "\n";
+        ans += tab + "\tident: " + ident + "\n";
         ans += tab + "}\n";
         return ans;
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        if(type == "int") {
-            buffer += tab + " i32 ";
-        } else{
-            buffer += tab + " error-type ";
-        }
-        return "";
+        buffer += "@" + ident + ": " + "i32"; // XXX bType 目前只有 int
+        return ident;
     }
 };
 
@@ -527,6 +672,7 @@ public:
 
     Kind kind;
 
+    bool isGlobal;
     std::string ident;
     std::unique_ptr<BaseExpAST> initVal;
 
@@ -551,13 +697,23 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        buffer += tab + "@" + ident + " = alloc i32\n";
         if (kind == kUnInit) {
-            // do nothing
+            if (isGlobal) {
+                buffer += tab + "global @" + ident + " = alloc i32, zeroinit\n";
+            } else {
+                buffer += tab + "@" + ident + " = alloc i32\n";
+            }
         } else
         if (kind == kInit) {
-            std::string var = initVal->PrintIR(tab, buffer);
-            buffer += tab + "store " + var + ", @" + ident + "\n";
+            if (isGlobal) {
+                // XXX 没有检查initVal是否是常量
+                std::string var = initVal->PrintIR(tab, buffer);
+                buffer += tab + "global @" + ident + " = alloc i32, " + var + "\n";
+            } else {
+                buffer += tab + "@" + ident + " = alloc i32\n";
+                std::string var = initVal->PrintIR(tab, buffer);
+                buffer += tab + "store " + var + ", @" + ident + "\n";
+            }
         } else {
             std::cerr << "VarDefAST::PrintIR: unknown kind" << std::endl;
         }
@@ -810,7 +966,7 @@ public:
     Kind kind;
 
     std::string lVal;
-    std::unique_ptr<BaseExpAST> exp; // 在 kExp 类型中，可以为 nullptr
+    std::unique_ptr<BaseExpAST> exp; // 在 kExp 和 kReturn 类型中，可以为 nullptr
     int whileIndex; // kWhile、kBreak、kContinue 类型中使用
     std::unique_ptr<BaseAST> stmt;
     std::unique_ptr<BaseAST> block;
@@ -863,7 +1019,7 @@ public:
             std::string ans = "";
             ans += "OtherStmtAST {\n";
             ans += tab + "\tkind: " + "return\n";
-            ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
+            ans += tab + "\texp: " + (exp == nullptr ? "NULL\n" : exp->PrintAST(tab + "\t"));
             ans += tab + "}\n";
             return ans;
         } else
@@ -889,7 +1045,7 @@ public:
         // store var, @lVal
         if (kind == kAssign) {
             std::string var = exp->PrintIR(tab, buffer);
-            buffer += tab + "store " + var + ", @" + lVal + "\n";
+            buffer += tab + "store " + var + ", " + lVal + "\n";
         } else
         if (kind == kWhile) {
             std::string whileEntryLabel = "\%while_entry" + (whileIndex == 0 ? "" : "_" + std::to_string(whileIndex));
@@ -923,9 +1079,8 @@ public:
         // Exp
         // ret var
         if (kind == kReturn) {
-            // 根据后面计算出来的变量名称
-            std::string var = exp->PrintIR(tab, buffer);
-            buffer += tab + "ret " + var + "\n";
+            std::string retVar = exp == nullptr ? "" : " " + exp->PrintIR(tab, buffer);
+            buffer += tab + "ret" + retVar + "\n";
             return "return"; // 返回 return，说明该基本块以 return 语句结尾，语句块结尾不能加 br、jump 等
         } else
         // Block
@@ -1054,7 +1209,7 @@ public:
         } else
         if (kind == kLVal) {
             std::string now = NewTempSymbol();
-            buffer += tab + now + " = load @" + lVal + "\n";
+            buffer += tab + now + " = load " + lVal + "\n";
             return now;
         } else
         if (kind == kNumber) {
@@ -1077,6 +1232,7 @@ class UnaryExpAST : public BaseExpAST {
 public:
     enum Kind {
         kPrimaryExp,
+        kCall,
         kPositive,
         kNegative,
         kNot
@@ -1084,11 +1240,18 @@ public:
     
     Kind kind;
     std::unique_ptr<BaseExpAST> primaryExp;
+    std::string ident;
+    int funcType;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseExpAST> > > funcRParams;
     std::unique_ptr<BaseExpAST> unaryExp;
 
     int CalcConstExp() const override {
         if (kind == kPrimaryExp) {
             return primaryExp->CalcConstExp();
+        } else
+        if (kind == kCall) {
+            std::cerr << "UnaryExpAST::CalcConstExp: call is not a const" << std::endl;
+            return 0;
         } else
         if (kind == kPositive) {
             return unaryExp->CalcConstExp();
@@ -1110,6 +1273,14 @@ public:
         switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kPrimaryExp:
             ans += tab + "\tprimaryExp: " + primaryExp->PrintAST(tab + "\t");
+            break;
+        case kCall:
+            ans += tab + "\tident: " + ident + "\n";
+            ans += tab + "\tfuncRParams: {\n";
+            for (auto &param : *funcRParams) {
+                ans += tab + "\t\t" + param->PrintAST(tab + "\t\t");
+            }
+            ans += tab + "\t}\n";
             break;
         case kPositive:
             ans += tab + "\tunaryOp: " + "+" + "\n";
@@ -1135,6 +1306,51 @@ public:
         if(kind == kPrimaryExp) {
             std::string var = primaryExp->PrintIR(tab, buffer);
             return var;
+        } else
+        if (kind == kCall) {
+            if (funcType == 0) { // void
+                // 先算出实参列表
+                std::vector<std::string> params;
+                if (funcRParams != nullptr) {
+                    for (auto &paramAST : *funcRParams) {
+                        params.push_back(paramAST->PrintIR(tab, buffer));
+                    }
+                }
+                buffer += tab + "call @" + ident + "(";
+                if (funcRParams != nullptr) {
+                    for (auto &param : params) {
+                        buffer += param;
+                        if (param != params.back()) {
+                            buffer += ", ";
+                        }
+                    }
+                }
+                buffer += ")\n";
+                return "";
+            } else
+            if (funcType == 1) { // int
+                // 先算出实参列表
+                std::vector<std::string> params;
+                if (funcRParams != nullptr) {
+                    for (auto &paramAST : *funcRParams) {
+                        params.push_back(paramAST->PrintIR(tab, buffer));
+                    }
+                }
+                std::string now = NewTempSymbol();
+                buffer += tab + now + " = call @" + ident + "(";
+                if (funcRParams != nullptr) {
+                    for (auto &param : params) {
+                        buffer += param;
+                        if (param != params.back()) {
+                            buffer += ", ";
+                        }
+                    }
+                }
+                buffer += ")\n";
+                return now;
+            } else {
+                std::cerr << "UnaryExpAST::PrintIR: unknown funcType" << std::endl;
+            }
         } else
         // +, 不产生IR
         if (kind == kPositive) {

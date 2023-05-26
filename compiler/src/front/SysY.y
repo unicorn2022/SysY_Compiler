@@ -14,7 +14,14 @@
 #include "AST.hpp"
 
 // 用于存储符号表
+// 符号表的作用域为函数内，随着编译过程动态增加或删除
 NestedSymbolTable symbolTable;
+
+// 用于存储全局符号表
+SymbolTable globalSymbolTable;
+
+// 用于记录当前是否在全局作用域
+bool isGlobal = true;
 
 // 用于记录 if 语句的出现词序，以生成唯一的标签
 int ifCount = 0;
@@ -45,58 +52,143 @@ using namespace std;
     BaseAST *ast_val;
     BaseExpAST *expAst_val;
     std::vector<std::unique_ptr<BaseAST> > *ast_list;
+    std::vector<std::unique_ptr<BaseExpAST> > *expAst_list;
 }
 
 // lexer 返回的所有 token 种类的声明（终结符）
 // 注意 IDENT 和 INT_CONST 会返回 token 的值, 分别对应 str_val 和 int_val
-%token INT CONST IF ELSE WHILE BREAK CONTINUE RETURN LT GT LE GE EQ NE AND OR
+%token VOID INT CONST IF ELSE WHILE BREAK CONTINUE RETURN LT GT LE GE EQ NE AND OR
 %token <str_val> IDENT
 %token <int_val> INT_CONST
 
 // 非终结符的类型定义, 分别对应 ast_val 和 int_val
-%type <ast_val> FuncDef FuncType Block BlockItem Decl ConstDecl ConstDef VarDecl VarDef Stmt MatchStmt UnmatchStmt OtherStmt
+%type <ast_val> GlobalDef FuncDef FuncFParam Block BlockItem Decl ConstDecl ConstDef VarDecl VarDef Stmt MatchStmt UnmatchStmt OtherStmt
 %type <expAst_val> ConstInitVal ConstExp InitVal Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
-%type <ast_list> BlockItems ConstDefs VarDefs
+%type <ast_list> GlobalDefs FuncFParams BlockItems ConstDefs VarDefs
+%type <expAst_list> FuncRParams
 %type <str_val> LVal
-%type <int_val> BType Number If While
+%type <int_val> Number If While
 
 // 无返回类型的终结符
 // BlockBeg BlockEnd
 
 %%
 
-// CompUnit ::= FuncDef;
+// CompUnit ::= [CompUnit] FuncDef;
 // 之前我们定义了 FuncDef 会返回一个 ast_val
 // 而 parser 一旦解析完 CompUnit, 就说明所有的 token 都被解析了, 即解析结束了
 // 此时我们应该把 FuncDef 返回的结果收集起来, 作为 AST 传给调用 parser 的函数
 // $1 指代规则里第一个符号的返回值, 也就是 FuncDef 的返回值
 CompUnit
-    : FuncDef {
-        auto comp_unit = make_unique<CompUnitAST>();
-        comp_unit->func_def = unique_ptr<BaseAST>($1);
-        ast = move(comp_unit);
+    : GlobalDefs {
+        auto compUnit = make_unique<CompUnitAST>();
+        compUnit->globalDefs = unique_ptr<vector<unique_ptr<BaseAST> > >($1);
+        ast = move(compUnit);
     }
     ;
 
-// FuncDef ::= FuncType IDENT '(' ')' Block;
-// 我们这里可以直接写 '(' 和 ')', 因为之前在 lexer 里已经处理了单个字符的情况
-// 解析完成后, 把这些符号的结果收集起来, 然后拼成一个 FuncDefAST, 作为结果返回
-// $$ 表示非终结符的返回值, 我们可以通过给这个符号赋值的方法来返回结果
-FuncDef
-    : FuncType IDENT '(' ')' Block {
-        auto ast = new FuncDefAST();
-        ast->func_type = unique_ptr<BaseAST>($1);
-        ast->ident = *unique_ptr<string>($2);
-        ast->block = unique_ptr<BaseAST>($5);
+GlobalDefs
+    : GlobalDef {
+        auto ast_list = new vector<unique_ptr<BaseAST> >();
+        ast_list->push_back(unique_ptr<BaseAST>($1));
+        $$ = ast_list;
+    }
+    | GlobalDefs GlobalDef {
+        auto ast_list = $1; // XXX 这里没用 unique_ptr
+        ast_list->push_back(unique_ptr<BaseAST>($2));
+        $$ = ast_list;
+    }
+    ;
+
+GlobalDef
+    : Decl {
+        auto ast = new GlobalDefAST();
+        ast->kind = GlobalDefAST::kDecl;
+        ast->decl = unique_ptr<BaseAST>($1);
+        $$ = ast;
+    }
+    | FuncDef {
+        auto ast = new GlobalDefAST();
+        ast->kind = GlobalDefAST::kFuncDef;
+        ast->funcDef = unique_ptr<BaseAST>($1);
         $$ = ast;
     }
     ;
 
-// FuncType ::= INT;
-FuncType
-    : INT {
-        auto ast = new FuncTypeAST();
-        ast->type = "int";
+// FuncDef ::= FuncType IDENT '(' [FuncFParams] ')' Block;
+// 我们这里可以直接写 '(' 和 ')', 因为之前在 lexer 里已经处理了单个字符的情况
+// 解析完成后, 把这些符号的结果收集起来, 然后拼成一个 FuncDefAST, 作为结果返回
+// $$ 表示非终结符的返回值, 我们可以通过给这个符号赋值的方法来返回结果
+FuncDef
+    : VOID IDENT '(' ')' {globalSymbolTable.AddFuncSymbol(*$2, 0);} Block {
+        auto ast = new FuncDefAST();
+        ast->funcType = 0; // 0 表示 void
+        ast->ident = *unique_ptr<string>($2);
+        ast->funcFParams = nullptr;
+        ast->block = unique_ptr<BaseAST>($6);
+
+        isGlobal = true; // 函数定义结束，全局状态设为 true
+        
+        $$ = ast;
+    }
+    | INT IDENT '(' ')' {globalSymbolTable.AddFuncSymbol(*$2, 1);} Block {
+        auto ast = new FuncDefAST();
+        ast->funcType = 1; // 1 表示 int
+        ast->ident = *unique_ptr<string>($2);
+        ast->funcFParams = nullptr;
+        ast->block = unique_ptr<BaseAST>($6);
+
+        isGlobal = true; // 函数定义结束，全局状态设为 true
+        
+        $$ = ast;
+    }
+    | VOID IDENT '(' FuncFParams ')' {globalSymbolTable.AddFuncSymbol(*$2, 0);} Block {
+        auto ast = new FuncDefAST();
+        ast->funcType = 0; // 0 表示 void
+        ast->ident = *unique_ptr<string>($2);
+        ast->funcFParams = unique_ptr<vector<unique_ptr<BaseAST> > >($4);
+        ast->block = unique_ptr<BaseAST>($7);
+
+        symbolTable.ClearFParamTable();
+        isGlobal = true; // 函数定义结束，全局状态设为 true
+
+        $$ = ast;
+    }
+    | INT IDENT '(' FuncFParams ')' {globalSymbolTable.AddFuncSymbol(*$2, 1);} Block {
+        auto ast = new FuncDefAST();
+        ast->funcType = 1; // 1 表示 int
+        ast->ident = *unique_ptr<string>($2);
+        ast->funcFParams = unique_ptr<vector<unique_ptr<BaseAST> > >($4);
+        ast->block = unique_ptr<BaseAST>($7);
+
+        symbolTable.ClearFParamTable();
+        isGlobal = true; // 函数定义结束，全局状态设为 true
+
+        $$ = ast;
+    }
+    ;
+
+FuncFParams
+    : FuncFParam {
+        auto ast_list = new vector<unique_ptr<BaseAST> >();
+        ast_list->push_back(unique_ptr<BaseAST>($1));
+        $$ = ast_list;
+    }
+    | FuncFParams ',' FuncFParam {
+        auto ast_list = $1; // XXX 这里没用 unique_ptr
+        ast_list->push_back(unique_ptr<BaseAST>($3));
+        $$ = ast_list;
+    }
+    ;
+
+FuncFParam
+    : INT IDENT { // XXX BType 确定为 int
+        auto ast = new FuncFParamAST();
+        ast->bType = 0;
+        ast->ident = *unique_ptr<string>($2);
+
+        symbolTable.AddFParamSymbol(ast->ident); // 添加函数形参符号
+        
         $$ = ast;
     }
     ;
@@ -119,6 +211,9 @@ Block
 // 进入代码块，创建新的符号表
 BlockBeg
     : '{' {
+        if (isGlobal == true) { // 是全局状态，说明代码块为进入函数体的代码块，将全局状态设为 false
+            isGlobal = false;
+        }
         symbolTable.AddTable();
     }
     ;
@@ -180,20 +275,20 @@ Decl
 // ConstDecl ::= "const" BType ConstDef {"," ConstDef} ";";
 // (ConstDecl ::= "const" BType ConstDefs ';';)
 ConstDecl
-    : CONST BType ConstDefs ';' {
+    : CONST INT ConstDefs ';' {
         auto ast = new ConstDeclAST();
-        ast->bType = $2;
+        ast->bType = 0;
         ast->constDefs = unique_ptr<vector<unique_ptr<BaseAST> > >($3);
         $$ = ast;
     }
     ;
 
 // BType ::= INT
-BType
-    : INT {
-        $$ = 0; // FIXME 这里应该是一个类型
-    }
-    ;
+// BType
+//     : INT {
+//         $$ = 0; // XXX 这里应该是一个类型
+//     }
+//     ;
 
 // (ConstDefs ::= ConstDef | ConstDefs ',';)
 ConstDefs
@@ -216,7 +311,11 @@ ConstDef
         ast->ident = *unique_ptr<string>($1);
         ast->constInitVal = unique_ptr<BaseExpAST>($3);
         // 将常量定义插入符号表
+        if (isGlobal) {
+            globalSymbolTable.AddConstSymbol(ast->ident, ast->constInitVal->CalcConstExp());
+        } else {
         symbolTable.AddConstSymbol(ast->ident, ast->constInitVal->CalcConstExp());
+        }
         $$ = ast;
     }
     ;
@@ -233,9 +332,9 @@ ConstInitVal
 // VarDecl ::= BType VarDef {"," VarDef} ";";
 // (VarDecl ::= BType VarDefs ';';)
 VarDecl
-    : BType VarDefs ';' {
+    : INT VarDefs ';' {
         auto ast = new VarDeclAST();
-        ast->bType = $1;
+        ast->bType = 0;
         ast->varDefs = unique_ptr<vector<unique_ptr<BaseAST> > >($2);
         $$ = ast;
     }
@@ -259,28 +358,46 @@ VarDefs
 VarDef
     : IDENT {
         auto ast = new VarDefAST();
+        ast->isGlobal = isGlobal;
         ast->kind = VarDefAST::kUnInit;
         ast->ident = *unique_ptr<string>($1);
+
+        if (isGlobal) {
+            // 将变量定义插入符号表
+            globalSymbolTable.AddVarSymbol(ast->ident, 0);
+            // 全局变量名不加序号
+        } else {
         // 将变量定义插入符号表
         symbolTable.AddVarSymbol(ast->ident);
 
         // 变量名后面加上序号
         int id = symbolTable.GetVarSymbolValue(ast->ident);
-        ast->ident += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+            ast->ident += id == 0 ? "" : "_" + to_string(id); // XXX 不需要 0 了，因为全局变量不加序号，局部变量默认都加序号
+                                                              // 原优化：如果序号为0，不加在变量名后面
+        }
         
         $$ = ast;
     }
     | IDENT '=' InitVal {
         auto ast = new VarDefAST();
+        ast->isGlobal = isGlobal;
         ast->kind = VarDefAST::kInit;
         ast->ident = *unique_ptr<string>($1);
         ast->initVal = unique_ptr<BaseExpAST>($3);
+
+        if (isGlobal) {
+            // 将变量定义插入符号表
+            globalSymbolTable.AddVarSymbol(ast->ident, 0);
+            // 全局变量名不加序号
+        } else {
         // 将变量定义插入符号表
         symbolTable.AddVarSymbol(ast->ident);
         
         // 变量名后面加上序号
         int id = symbolTable.GetVarSymbolValue(ast->ident);
-        ast->ident += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+            ast->ident += id == 0 ? "" : "_" + to_string(id); // XXX 不需要 0 了，因为全局变量不加序号，局部变量默认都加序号
+                                                              // 原优化：如果序号为0，不加在变量名后面
+        }
 
         $$ = ast;
     }
@@ -380,7 +497,12 @@ OtherStmt
 
         // 变量名后面加上序号
         int id = symbolTable.GetVarSymbolValue(ast->lVal);
-        ast->lVal += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+        // XXX 目前有 BUG：函数形参不能赋值，所以这里没有用
+        if (id == -1) { // 如果序号为 -1，说明是函数形参
+            ast->lVal = "\%fParam_" + ast->lVal;
+        } else {
+            ast->lVal = "@" + ast->lVal + (id == 0 ? "" : "_" + to_string(id)); // 优化：如果序号为0，不加在变量名后面
+        }
 
         ast->exp = unique_ptr<BaseExpAST>($3);
         $$ = ast;
@@ -404,6 +526,12 @@ OtherStmt
         auto ast = new OtherStmtAST();
         ast->kind = OtherStmtAST::kContinue;
         ast->whileIndex = nestedWhileIndex.back(); // 跳出 while 循环，跳转到最近的 while 循环判断，所以需要获取最近 while 的标号
+        $$ = ast;
+    }
+    | RETURN ';' {
+        auto ast = new OtherStmtAST();
+        ast->kind = OtherStmtAST::kReturn;
+        ast->exp = nullptr;
         $$ = ast;
     }
     | RETURN Exp ';' {
@@ -458,6 +586,8 @@ PrimaryExp
         auto ast = new PrimaryExpAST();
         ast->lVal = *unique_ptr<string>($1);
 
+        // 先查找局部标识符
+        if (symbolTable.HasSymbol(ast->lVal)) {
         // LVal 是常量标识符，直接替换为常量值
         if (symbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kConst) {
             ast->kind = PrimaryExpAST::kNumber;
@@ -469,9 +599,29 @@ PrimaryExp
 
             // 变量名后面加上序号
             int id = symbolTable.GetVarSymbolValue(ast->lVal);
-            ast->lVal += id == 0 ? "" : "_" + to_string(id); // 优化：如果序号为0，不加在变量名后面
+                if (id == -1) { // 如果序号为 -1，说明是函数形参
+                    ast->lVal = "\%fParam_" + ast->lVal;
         } else {
-            std::cerr << "error: " << ast->lVal << " is not a variable or constant" << std::endl;
+                    ast->lVal = "@" + ast->lVal + (id == 0 ? "" : "_" + to_string(id)); // 优化：如果序号为0，不加在变量名后面
+                }
+            } else {
+                std::cerr << "PrimaryExp: unknown symbol type" << std::endl;
+            }
+        } else
+        // 再查找全局标识符
+        if (globalSymbolTable.HasSymbol(ast->lVal)) {
+            if (globalSymbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kConst) {
+                ast->kind = PrimaryExpAST::kNumber;
+                ast->number = globalSymbolTable.GetConstSymbolValue(ast->lVal);
+            } else
+            if (globalSymbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kVar) {
+                ast->kind = PrimaryExpAST::kLVal;
+                ast->lVal = "@" + ast->lVal;
+            } else {
+                std::cerr << "PrimaryExp: unknown symbol type" << std::endl;
+            }
+        } else {
+            std::cerr << "error: " << ast->lVal << " is not defined" << std::endl;
         }
 
         $$ = ast;
@@ -508,6 +658,22 @@ UnaryExp
         ast->primaryExp = unique_ptr<BaseExpAST>($1);
         $$ = ast;
     }
+    | IDENT '(' ')' {
+        auto ast = new UnaryExpAST();
+        ast->kind = UnaryExpAST::kCall;
+        ast->ident = *unique_ptr<string>($1);
+        ast->funcType = globalSymbolTable.GetFuncSymbolValue(ast->ident);
+        ast->funcRParams = nullptr;
+        $$ = ast;
+    }
+    | IDENT '(' FuncRParams ')' {
+        auto ast = new UnaryExpAST();
+        ast->kind = UnaryExpAST::kCall;
+        ast->ident = *unique_ptr<string>($1);
+        ast->funcType = globalSymbolTable.GetFuncSymbolValue(ast->ident);
+        ast->funcRParams = unique_ptr<vector<unique_ptr<BaseExpAST> > >($3);
+        $$ = ast;
+    }
     | '+' UnaryExp{
         auto ast = new UnaryExpAST();
         ast->kind = UnaryExpAST::kPositive;
@@ -525,6 +691,19 @@ UnaryExp
         ast->kind = UnaryExpAST::kNot;
         ast->unaryExp = unique_ptr<BaseExpAST>($2);
         $$ = ast;
+    }
+    ;
+
+FuncRParams
+    : Exp {
+        auto ast_list = new vector<unique_ptr<BaseExpAST> >();
+        ast_list->push_back(unique_ptr<BaseExpAST>($1));
+        $$ = ast_list;
+    }
+    | FuncRParams ',' Exp {
+        auto ast_list = $1; // XXX 这里没用 unique_ptr
+        ast_list->push_back(unique_ptr<BaseExpAST>($3));
+        $$ = ast_list;
     }
     ;
 
