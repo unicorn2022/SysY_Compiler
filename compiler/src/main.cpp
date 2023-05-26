@@ -16,6 +16,8 @@ void CopyFile(const char input[], const char output[]){
     fout.close();
 }
 
+int debug_cnt;
+
 int main(int argc, const char *argv[]) {
     // 解析命令行参数. 测试脚本/评测平台要求你的编译器能接收如下参数:
     // compiler 模式 输入文件 -o 输出文件
@@ -28,6 +30,8 @@ int main(int argc, const char *argv[]) {
         front_main(input, output);
     } 
     else if (strcmp(mode, "-riscv") == 0) {
+        // for(int i = 0; i <= 1000000000; i++)
+        //     debug_cnt++;
         const char CFile[] = "./test/task.c";
         const char IRFile[] = "./test/task.koopa";
 
