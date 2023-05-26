@@ -1,133 +1,204 @@
+	.data
+	.global a
+a:
+	.word 10
+
+
+	.text
+	.globl inc
+inc:
+	addi sp, sp, -16
+	sw   ra, 12(sp)
+entry_inc:
+	la   t1, a
+	lw   t0, 0(t1)
+	sw   t0, 0(sp)
+
+	lw   t0, 0(sp)
+	li   t1, 1
+	add  t0, t0, t1
+	sw   t0, 4(sp)
+
+	lw   t0, 4(sp)
+	la   t1, a
+	sw   t0, 0(t1)
+
+	la   t1, a
+	lw   t0, 0(t1)
+	sw   t0, 8(sp)
+
+	lw   a0, 8(sp)
+	lw   ra, 12(sp)
+	addi sp, sp, 16
+	ret
+
+
+	.text
+	.globl print_a
+print_a:
+	addi sp, sp, -8
+	sw   ra, 4(sp)
+entry_print_a:
+	la   t1, a
+	lw   t0, 0(t1)
+	sw   t0, 0(sp)
+
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	lw   a0, 4(sp)
+	call putint
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	li   a0, 10
+	call putch
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	lw   ra, 4(sp)
+	addi sp, sp, 8
+	ret
+
 
 	.text
 	.globl main
 main:
-	addi sp, sp, -76
-	sw   ra, 72(sp)
+	addi sp, sp, -56
+	sw   ra, 52(sp)
 entry_main:
 	li   t0, 0
 	sw   t0, 0(sp)
 
-	li   t0, 1
+	j    while_entry
+
+while_entry:
+	lw   t0, 0(sp)
 	sw   t0, 4(sp)
 
-	li   t0, 2
+	lw   t0, 4(sp)
+	li   t1, 10
+	slt  t0, t0, t1
+	andi t0, t0, 0xff
 	sw   t0, 8(sp)
 
+	lw   t0, 8(sp)
+	bnez t0, while_body
+	j    while_end
+
+while_body:
 	lw   t0, 0(sp)
 	sw   t0, 12(sp)
 
-	lw   t0, 12(sp)
-	li   t1, 0
-	or   t0, t0, t1
-	sw   t0, 16(sp)
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	lw   a0, 16(sp)
+	call putint
+	addi sp, sp, 4
+	lw   a0, -4(sp)
 
-	li   t0, 0
-	lw   t1, 16(sp)
-	sub  t0, t0, t1
-	snez t0, t0
-	andi t0, t0, 0xff
-	sw   t0, 20(sp)
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	li   a0, 10
+	call putch
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	call inc
+	addi sp, sp, 4
+	sw   a0, 20(sp)
+	lw   a0, -4(sp)
 
 	lw   t0, 20(sp)
-	bnez t0, then
-	j    else
+	sw   t0, 16(sp)
 
-then:
-	li   t0, 3
-	sw   t0, 4(sp)
-
-	j    end
-
-else:
-	li   t0, 3
-	sw   t0, 8(sp)
-
-	li   t0, 1
+	lw   t0, 16(sp)
 	sw   t0, 24(sp)
 
-	lw   t0, 24(sp)
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	lw   a0, 28(sp)
+	call putint
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	li   a0, 10
+	call putch
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	li   t0, 1
 	sw   t0, 28(sp)
 
 	lw   t0, 28(sp)
-	li   t1, 0
-	or   t0, t0, t1
 	sw   t0, 32(sp)
 
-	li   t0, 0
-	lw   t1, 32(sp)
-	sub  t0, t0, t1
-	snez t0, t0
-	andi t0, t0, 0xff
+	lw   t0, 32(sp)
+	li   t1, 2
+	add  t0, t0, t1
 	sw   t0, 36(sp)
 
 	lw   t0, 36(sp)
-	bnez t0, then_1
-	j    else_1
+	sw   t0, 28(sp)
 
-end:
-	lw   t0, 0(sp)
+	lw   t0, 28(sp)
 	sw   t0, 40(sp)
 
-	lw   t0, 40(sp)
-	li   t1, 0
-	add  t0, t0, t1
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	lw   a0, 44(sp)
+	call putint
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	li   a0, 10
+	call putch
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	call print_a
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	li   a0, 10
+	call putch
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	addi sp, sp, -4
+	sw   a0, 0(sp)
+	li   a0, 10
+	call putch
+	addi sp, sp, 4
+	lw   a0, -4(sp)
+
+	lw   t0, 0(sp)
 	sw   t0, 44(sp)
 
-	lw   t0, 4(sp)
+	lw   t0, 44(sp)
+	li   t1, 1
+	add  t0, t0, t1
 	sw   t0, 48(sp)
 
-	lw   t0, 44(sp)
-	lw   t1, 48(sp)
-	add  t0, t0, t1
-	sw   t0, 52(sp)
+	lw   t0, 48(sp)
+	sw   t0, 0(sp)
 
-	lw   t0, 8(sp)
-	sw   t0, 56(sp)
+	j    while_entry
 
-	lw   t0, 52(sp)
-	lw   t1, 56(sp)
-	add  t0, t0, t1
-	sw   t0, 60(sp)
-
-	lw   a0, 60(sp)
-	lw   ra, 72(sp)
-	addi sp, sp, 76
+while_end:
+	li   a0, 0
+	lw   ra, 52(sp)
+	addi sp, sp, 56
 	ret
-
-then_1:
-	li   t0, 4
-	sw   t0, 4(sp)
-
-	j    end_1
-
-else_1:
-	li   t0, 4
-	sw   t0, 8(sp)
-
-	j    end_1
-
-end_1:
-	lw   t0, 24(sp)
-	sw   t0, 64(sp)
-
-	lw   t0, 64(sp)
-	li   t1, 0
-	sub  t0, t0, t1
-	seqz t0, t0
-	andi t0, t0, 0xff
-	sw   t0, 68(sp)
-
-	lw   t0, 68(sp)
-	bnez t0, then_2
-	j    end_2
-
-then_2:
-	li   a0, 1
-	lw   ra, 72(sp)
-	addi sp, sp, 76
-	ret
-
-end_2:
-	j    end
 
