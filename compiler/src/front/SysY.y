@@ -63,10 +63,9 @@ using namespace std;
 
 // 非终结符的类型定义, 分别对应 ast_val 和 int_val
 %type <ast_val> GlobalDef FuncDef FuncFParam Block BlockItem Decl ConstDecl ConstDef VarDecl VarDef Stmt MatchStmt UnmatchStmt OtherStmt
-%type <expAst_val> ConstInitVal ConstExp InitVal Exp PrimaryExp UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
+%type <expAst_val> ConstInitVal ConstExp InitVal Exp PrimaryExp LVal UnaryExp MulExp AddExp RelExp EqExp LAndExp LOrExp
 %type <ast_list> GlobalDefs FuncFParams BlockItems ConstDefs VarDefs
-%type <expAst_list> FuncRParams
-%type <str_val> LVal
+%type <expAst_list> FuncRParams ConstArrayDims ArrayDims
 %type <int_val> Number If While
 
 // 无返回类型的终结符
@@ -367,15 +366,39 @@ VarDef
             globalSymbolTable.AddVarSymbol(ast->ident, 0);
             // 全局变量名不加序号
         } else {
-        // 将变量定义插入符号表
-        symbolTable.AddVarSymbol(ast->ident);
+            // 将变量定义插入符号表
+            symbolTable.AddVarSymbol(ast->ident);
 
-        // 变量名后面加上序号
-        int id = symbolTable.GetVarSymbolValue(ast->ident);
+            // 变量名后面加上序号
+            int id = symbolTable.GetVarSymbolValue(ast->ident);
+            ast->ident += id == 0 ? "" : "_" + to_string(id); // XXX 不需要 0 了，因为全局变量不加序号，局部变量默认都加序号
+                                                            // 原优化：如果序号为0，不加在变量名后面
+        }
+        
+        $$ = ast;
+    }
+    | IDENT ConstArrayDims {
+        auto ast = new VarDefAST();
+        ast->isGlobal = isGlobal;
+        ast->kind = VarDefAST::kArray;
+        ast->ident = *unique_ptr<string>($1);
+        ast->constArrayDims = unique_ptr<vector<unique_ptr<BaseExpAST> > >($2);
+
+        // TODO 没有在符号表中区分数组和变量
+        if (isGlobal) {
+            // 将变量定义插入符号表
+            globalSymbolTable.AddVarSymbol(ast->ident, 0);
+            // 全局变量名不加序号
+        } else {
+            // 将变量定义插入符号表
+            symbolTable.AddVarSymbol(ast->ident);
+
+            // 变量名后面加上序号
+            int id = symbolTable.GetVarSymbolValue(ast->ident);
             ast->ident += id == 0 ? "" : "_" + to_string(id); // XXX 不需要 0 了，因为全局变量不加序号，局部变量默认都加序号
                                                               // 原优化：如果序号为0，不加在变量名后面
         }
-        
+
         $$ = ast;
     }
     | IDENT '=' InitVal {
@@ -390,16 +413,29 @@ VarDef
             globalSymbolTable.AddVarSymbol(ast->ident, 0);
             // 全局变量名不加序号
         } else {
-        // 将变量定义插入符号表
-        symbolTable.AddVarSymbol(ast->ident);
-        
-        // 变量名后面加上序号
-        int id = symbolTable.GetVarSymbolValue(ast->ident);
+            // 将变量定义插入符号表
+            symbolTable.AddVarSymbol(ast->ident);
+            
+            // 变量名后面加上序号
+            int id = symbolTable.GetVarSymbolValue(ast->ident);
             ast->ident += id == 0 ? "" : "_" + to_string(id); // XXX 不需要 0 了，因为全局变量不加序号，局部变量默认都加序号
                                                               // 原优化：如果序号为0，不加在变量名后面
         }
 
         $$ = ast;
+    }
+    ;
+
+ConstArrayDims
+    : '[' ConstExp ']' {
+        auto expAst_list = new vector<unique_ptr<BaseExpAST> >();
+        expAst_list->push_back(unique_ptr<BaseExpAST>($2));
+        $$ = expAst_list;
+    }
+    | ConstArrayDims '[' ConstExp ']' {
+        auto expAst_list = $1; // XXX 这里没用 unique_ptr
+        expAst_list->push_back(unique_ptr<BaseExpAST>($3));
+        $$ = expAst_list;
     }
     ;
 
@@ -493,17 +529,7 @@ OtherStmt
     | LVal '=' Exp ';' {
         auto ast = new OtherStmtAST();
         ast->kind = OtherStmtAST::kAssign;
-        ast->lVal = *unique_ptr<string>($1);
-
-        // 变量名后面加上序号
-        int id = symbolTable.GetVarSymbolValue(ast->lVal);
-        // XXX 目前有 BUG：函数形参不能赋值，所以这里没有用
-        if (id == -1) { // 如果序号为 -1，说明是函数形参
-            ast->lVal = "\%fParam_" + ast->lVal;
-        } else {
-            ast->lVal = "@" + ast->lVal + (id == 0 ? "" : "_" + to_string(id)); // 优化：如果序号为0，不加在变量名后面
-        }
-
+        ast->lVal = unique_ptr<BaseExpAST>($1);
         ast->exp = unique_ptr<BaseExpAST>($3);
         $$ = ast;
     }
@@ -584,46 +610,8 @@ PrimaryExp
     }
     | LVal {
         auto ast = new PrimaryExpAST();
-        ast->lVal = *unique_ptr<string>($1);
-
-        // 先查找局部标识符
-        if (symbolTable.HasSymbol(ast->lVal)) {
-        // LVal 是常量标识符，直接替换为常量值
-        if (symbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kConst) {
-            ast->kind = PrimaryExpAST::kNumber;
-            ast->number = symbolTable.GetConstSymbolValue(ast->lVal);
-        } else
-        // LVal 是变量标识符，替换为变量名
-        if (symbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kVar) {
-            ast->kind = PrimaryExpAST::kLVal;
-
-            // 变量名后面加上序号
-            int id = symbolTable.GetVarSymbolValue(ast->lVal);
-                if (id == -1) { // 如果序号为 -1，说明是函数形参
-                    ast->lVal = "\%fParam_" + ast->lVal;
-        } else {
-                    ast->lVal = "@" + ast->lVal + (id == 0 ? "" : "_" + to_string(id)); // 优化：如果序号为0，不加在变量名后面
-                }
-            } else {
-                std::cerr << "PrimaryExp: unknown symbol type" << std::endl;
-            }
-        } else
-        // 再查找全局标识符
-        if (globalSymbolTable.HasSymbol(ast->lVal)) {
-            if (globalSymbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kConst) {
-                ast->kind = PrimaryExpAST::kNumber;
-                ast->number = globalSymbolTable.GetConstSymbolValue(ast->lVal);
-            } else
-            if (globalSymbolTable.GetSymbolType(ast->lVal) == SymbolTable::Symbol::kVar) {
-                ast->kind = PrimaryExpAST::kLVal;
-                ast->lVal = "@" + ast->lVal;
-            } else {
-                std::cerr << "PrimaryExp: unknown symbol type" << std::endl;
-            }
-        } else {
-            std::cerr << "error: " << ast->lVal << " is not defined" << std::endl;
-        }
-
+        ast->kind = PrimaryExpAST::kLVal;
+        ast->lVal = unique_ptr<BaseExpAST>($1);
         $$ = ast;
     }
     | Number {
@@ -638,7 +626,86 @@ PrimaryExp
 // 不对应 AST, 直接返回 IDENT 的值
 LVal
     : IDENT {
-        $$ = $1;
+        auto ast = new LValAST();
+        ast->ident = *unique_ptr<string>($1);
+
+        // 先查找局部标识符
+        if (symbolTable.HasSymbol(ast->ident)) {
+            if (symbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kConst) {
+                ast->kind = LValAST::kConst;
+                ast->identVal = symbolTable.GetConstSymbolValue(ast->ident);
+            } else
+            if (symbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kVar) {
+                ast->kind = LValAST::kVar;
+                ast->identVal = symbolTable.GetVarSymbolValue(ast->ident);
+            } else {
+                std::cerr << "LVal: unknown symbol type" << std::endl;
+            }
+        } else
+        // 再查找全局标识符
+        if (globalSymbolTable.HasSymbol(ast->ident)) {
+            if (globalSymbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kConst) {
+                ast->kind = LValAST::kConst;
+                ast->identVal = globalSymbolTable.GetConstSymbolValue(ast->ident);
+            } else
+            if (globalSymbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kVar) {
+                ast->kind = LValAST::kVar;
+                ast->identVal = globalSymbolTable.GetVarSymbolValue(ast->ident);
+            } else {
+                std::cerr << "LVal: unknown symbol type" << std::endl;
+            }
+        } else {
+            std::cerr << "error: " << ast->ident << " is not defined" << std::endl;
+        }
+        
+        $$ = ast;
+    }
+    | IDENT ArrayDims {
+        auto ast = new LValAST();
+        ast->kind = LValAST::kArray;
+        ast->ident = *unique_ptr<string>($1);
+        ast->arrayDims = unique_ptr<vector<unique_ptr<BaseExpAST> > >($2);
+
+        // XXX 目前数组只有变量
+        // 先查找局部标识符
+        if (symbolTable.HasSymbol(ast->ident)) {
+            if (symbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kConst) {
+                ast->identVal = symbolTable.GetConstSymbolValue(ast->ident);
+            } else
+            if (symbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kVar) {
+                ast->identVal = symbolTable.GetVarSymbolValue(ast->ident);
+            } else {
+                std::cerr << "LVal: unknown symbol type" << std::endl;
+            }
+        } else
+        // 再查找全局标识符
+        if (globalSymbolTable.HasSymbol(ast->ident)) {
+            if (globalSymbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kConst) {
+                ast->identVal = globalSymbolTable.GetConstSymbolValue(ast->ident);
+            } else
+            if (globalSymbolTable.GetSymbolType(ast->ident) == SymbolTable::Symbol::kVar) {
+                ast->identVal = globalSymbolTable.GetVarSymbolValue(ast->ident);
+            } else {
+                std::cerr << "LVal: unknown symbol type" << std::endl;
+            }
+        } else {
+            std::cerr << "error: " << ast->ident << " is not defined" << std::endl;
+        }
+
+        $$ = ast;
+    }
+    ;
+
+ArrayDims
+    : '[' Exp ']' {
+        auto expAst_list = new vector<unique_ptr<BaseExpAST> >();
+        expAst_list->push_back(unique_ptr<BaseExpAST>($2));
+        $$ = expAst_list;
+    }
+    | ArrayDims '[' Exp ']' {
+        auto expAst_list = $1; // XXX 这里没用 unique_ptr
+        expAst_list->push_back(unique_ptr<BaseExpAST>($3));
+        $$ = expAst_list;
     }
     ;
 
@@ -696,14 +763,14 @@ UnaryExp
 
 FuncRParams
     : Exp {
-        auto ast_list = new vector<unique_ptr<BaseExpAST> >();
-        ast_list->push_back(unique_ptr<BaseExpAST>($1));
-        $$ = ast_list;
+        auto expAst_list = new vector<unique_ptr<BaseExpAST> >();
+        expAst_list->push_back(unique_ptr<BaseExpAST>($1));
+        $$ = expAst_list;
     }
     | FuncRParams ',' Exp {
-        auto ast_list = $1; // XXX 这里没用 unique_ptr
-        ast_list->push_back(unique_ptr<BaseExpAST>($3));
-        $$ = ast_list;
+        auto expAst_list = $1; // XXX 这里没用 unique_ptr
+        expAst_list->push_back(unique_ptr<BaseExpAST>($3));
+        $$ = expAst_list;
     }
     ;
 

@@ -1,10 +1,5 @@
-int fib(int n) {
-  if (n < 2) {
-    return n;
-  }
-  return fib(n - 1) + fib(n - 2);
-}
-
 int main() {
-  return fib(20);
+  int arr[2][3];
+  arr[0][2] = 12 + 7 / 8;
+  return arr[0][2];
 }

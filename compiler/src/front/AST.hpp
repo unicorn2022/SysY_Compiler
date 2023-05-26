@@ -266,7 +266,6 @@ public:
     }
 
     std::string PrintIR(std::string tab, std::string &buffer) const override{
-        // TODO
         for (auto &globalDef : *globalDefs) {
             globalDef->PrintIR(tab, buffer);
         }
@@ -667,6 +666,7 @@ class VarDefAST : public BaseAST {
 public:
     enum Kind {
         kUnInit,
+        kArray, // 只实现了没有手动初始化的数组
         kInit
     };
 
@@ -674,6 +674,7 @@ public:
 
     bool isGlobal;
     std::string ident;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseExpAST> > > constArrayDims; 
     std::unique_ptr<BaseExpAST> initVal;
 
     std::string PrintAST(std::string tab) const override {
@@ -683,6 +684,14 @@ public:
         switch (kind) { // XXX 把switch改成if else，switch中不能定义变量
         case kUnInit:
             ans += tab + "\tkind: unInit\n";
+            break;
+        case kArray:
+            ans += tab + "\tkind: array\n";
+            ans += tab + "\tconstArrayDims: [\n";
+            for (auto &constArrayDim : *constArrayDims) {
+                ans += tab + "\t\t" + constArrayDim->PrintAST(tab + "\t\t");
+            }
+            ans += tab + "\t]\n";
             break;
         case kInit:
             ans += tab + "\tkind: init\n";
@@ -702,6 +711,27 @@ public:
                 buffer += tab + "global @" + ident + " = alloc i32, zeroinit\n";
             } else {
                 buffer += tab + "@" + ident + " = alloc i32\n";
+            }
+        } else
+        if (kind == kArray) {
+            if (isGlobal) {
+                buffer += tab + "global @" + ident + " = alloc ";
+                // buffer 加上 constArrayDims 个数个 '['
+                buffer.append(constArrayDims->size(), '[');
+                buffer += "i32";
+                for (auto it = constArrayDims->rbegin(); it != constArrayDims->rend(); it++) {
+                    buffer += ", " + (*it)->PrintIR(tab, buffer) + "]";
+                }
+                buffer += ", zeroinit\n";
+            } else {
+                buffer += tab + "@" + ident + " = alloc ";
+                // buffer 加上 constArrayDims 个数个 '['
+                buffer.append(constArrayDims->size(), '[');
+                buffer += "i32";
+                for (auto it = constArrayDims->rbegin(); it != constArrayDims->rend(); it++) {
+                    buffer += ", " + (*it)->PrintIR(tab, buffer) + "]";
+                }
+                buffer += "\n"; // 局部变量不初始化
             }
         } else
         if (kind == kInit) {
@@ -943,9 +973,8 @@ public:
 };
 
 // OtherStmt: 不是条件分支的 SysY 语句
-// TODO OtherStmt ::=
+// OtherStme ::= 
 // 翻译为: ret var, var是Exp对应的变量
-// TODO 或
 /**
 *   翻译为:
 *   Exp
@@ -965,7 +994,7 @@ public:
     
     Kind kind;
 
-    std::string lVal;
+    std::unique_ptr<BaseExpAST> lVal;
     std::unique_ptr<BaseExpAST> exp; // 在 kExp 和 kReturn 类型中，可以为 nullptr
     int whileIndex; // kWhile、kBreak、kContinue 类型中使用
     std::unique_ptr<BaseAST> stmt;
@@ -984,7 +1013,7 @@ public:
             std::string ans = "";
             ans += "OtherStmtAST {\n";
             ans += tab + "\tkind: " + "assign\n";
-            ans += tab + "\tlVal: " + lVal + "\n";
+            ans += tab + "\tlVal: " + lVal->PrintAST(tab) + "\n";
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             ans += tab + "}\n";
             return ans;
@@ -1045,7 +1074,8 @@ public:
         // store var, @lVal
         if (kind == kAssign) {
             std::string var = exp->PrintIR(tab, buffer);
-            buffer += tab + "store " + var + ", " + lVal + "\n";
+            std::string lValName = lVal->PrintIR(tab, buffer);
+            buffer += tab + "store " + var + ", " + lValName + "\n";
         } else
         if (kind == kWhile) {
             std::string whileEntryLabel = "\%while_entry" + (whileIndex == 0 ? "" : "_" + std::to_string(whileIndex));
@@ -1163,7 +1193,7 @@ public:
 
     Kind kind;
     std::unique_ptr<BaseExpAST> exp;
-    std::string lVal;
+    std::unique_ptr<BaseExpAST> lVal;
     int number;
 
     int CalcConstExp() const override {
@@ -1171,7 +1201,7 @@ public:
             return exp->CalcConstExp();
         } else
         if (kind == kLVal) {
-            std::cerr << "PrimaryExpAST::CalcConstExp: lVal is not a const" << std::endl;
+            return lVal->CalcConstExp();
             return 0;
         } else
         if (kind == kNumber) {
@@ -1190,7 +1220,7 @@ public:
             ans += tab + "\texp: " + exp->PrintAST(tab + "\t");
             break;
         case kLVal:
-            ans += tab + "\tLVal: " + lVal + "\n";
+            ans += tab + "\tLVal: " + lVal->PrintAST(tab + "\t") + "\n";
             break;
         case kNumber:
             ans += tab + "\tnumber: " + std::to_string(number) + "\n";
@@ -1208,14 +1238,97 @@ public:
             return exp->PrintIR(tab, buffer);
         } else
         if (kind == kLVal) {
-            std::string now = NewTempSymbol();
-            buffer += tab + now + " = load " + lVal + "\n";
-            return now;
+            std::string lVarName = lVal->PrintIR(tab, buffer);
+            if (lVarName[0] != '@' && lVarName[0] != '%')  { // 不是需要 load 的变量
+                return lVarName;
+            } else { // 需要 load 的变量
+                std::string now = NewTempSymbol();
+                buffer += tab + now + " = load " + lVarName + "\n";
+                return now;
+            }
         } else
         if (kind == kNumber) {
             return std::to_string(number);
         } else {
             std::cerr << "PrimaryExpAST::PrintIR: unknown kind" << std::endl;
+        }
+        return "";
+    }
+};
+
+class LValAST: public BaseExpAST {
+public:
+    enum Kind {
+        kConst,
+        kVar,
+        kArray
+    };
+
+    Kind kind;
+
+    int identVal; // 标识符在符号表中的值
+    std::string ident;
+    std::unique_ptr<std::vector<std::unique_ptr<BaseExpAST> > > arrayDims;
+
+    int CalcConstExp() const override {
+        if (kind == kConst) {
+            return identVal;
+        } else {
+            std::cerr << "LValAST::CalcConstExp: lVal is not a const" << std::endl;
+        }
+        return 0;
+    }
+
+    std::string PrintAST(std::string tab) const override {
+        std::string ans = "";
+        ans += "LValAST {\n";
+        switch (kind) {
+        case kConst:
+            ans += tab + "\tconst: " + std::to_string(identVal) + "\n";
+            break;
+        case kVar:
+            ans += tab + "\tvar: " + ident + "\n";
+            break;
+        case kArray:
+            ans += tab + "\tarray: " + ident + "\n";
+            ans += tab + "\tarrayDims: [\n";
+            for (auto &dim : *arrayDims) {
+                ans += tab + "\t\t" + dim->PrintAST(tab + "\t\t") + "\n";
+            }
+            ans += tab + "\t]\n";
+            break;
+        default:
+            std::cerr << "LValAST::PrintAST: unknown kind" << std::endl;
+            break;
+        }
+        ans += tab + "}\n";
+        return ans;
+    }
+
+    std::string PrintIR(std::string tab, std::string &buffer) const override{
+        if (kind == kConst) {
+            return std::to_string(identVal);
+        } else
+        if (kind == kVar) {
+            if (identVal == -1) {
+                return "\%fParam_" + ident;
+            } else {
+                return "@" + ident + (identVal == 0 ? "" : "_" + std::to_string(identVal));
+            }
+        } else
+        if (kind == kArray) {
+            std::string pre = "@" + ident + (identVal == 0 ? "" : "_" + std::to_string(identVal));
+
+            for (auto &dim : *arrayDims) {
+                std::string var = dim->PrintIR(tab, buffer); // 数组下标
+                std::string now = NewTempSymbol();
+                buffer += tab + now + " = getelemptr " + pre + ", " + var + "\n";
+                pre = now;
+            }
+
+            return pre;
+        } else {
+            std::cerr << "LValAST::PrintIR: unknown kind" << std::endl;
         }
         return "";
     }
