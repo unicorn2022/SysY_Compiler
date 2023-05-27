@@ -42,10 +42,9 @@ void PrintInt(int x) {
 	putchar(x % 10 + '0');
 }
 
-const int maxn = 25 + 10;
-int n1, m1, a1[maxn][maxn];
-int n2, m2, a2[maxn][maxn];
-int n3, m3, a3[maxn][maxn];
+int n1, m1, a1[35][35];
+int n2, m2, a2[35][35];
+int n3, m3, a3[35][35];
 
 int main() {
 	//freopen("./input/task2.1.in", "r", stdin);

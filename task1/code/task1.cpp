@@ -1,8 +1,7 @@
 #pragma warning(disable:4996)
 #include <stdio.h>
 
-const int maxn = 10000 + 10;
-int n, a[maxn];
+int n, a[10010];
 
 int ReadInt() {
 	int ch = getchar();
