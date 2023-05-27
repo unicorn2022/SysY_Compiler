@@ -34,6 +34,29 @@ make test-koopa LEVEL=4
 
 `LEVEL`为测试的章节数
 
+### 1.5 Task 测试
+
+首先，在 `compiler/test` 目录下建立 `taski` 文件夹（i 为 task 序号）。以 task1 为例，其目录应为：
+
+```
+test/task1
+|-- 1.in
+|-- 2.in
+|-- 3.in
+|-- 4.in
+`-- task1.c
+```
+
+目录中必须包含 `taski.c` 文件，即将会被编译器编译成可执行文件的源代码。目录中还需要包含任意数量的输入文件 `file.in`，后缀必须为 `.in`，文件名不限
+
+在 `compiler` 目录下，运行以下命令以进行 Task 测试：
+
+```bash
+make task TASK=1
+```
+
+其中，`TASK` 是指定的 task 序号。
+
 # 二、调试代码
 
 RISCV输出字符`a\n`

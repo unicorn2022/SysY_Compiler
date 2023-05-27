@@ -95,7 +95,7 @@ $(BUILD_DIR)/%.tab$(FB_EXT): $(SRC_DIR)/%.y
 	$(BISON) $(BFLAGS) -o $@ $<
 
 
-.PHONY: clean riscv
+.PHONY: clean koopa riscv run test-riscv test-koopa task
 
 clean:
 	-rm -rf $(BUILD_DIR)
@@ -117,5 +117,18 @@ test-riscv:
 
 test-koopa:
 	autotest -koopa -s lv$(LEVEL) ./
+
+TASK = 1
+task:
+	cp ./test/task$(TASK)/task$(TASK).c ./test/task.c
+	./build/compiler -koopa ./test/task.c -o ./test/task.koopa
+	./build/compiler -riscv ./test/task.c -o ./test/task.S
+	clang ./test/task.S -c -o ./test/task.o -target riscv32-unknown-linux-elf -march=rv32im -mabi=ilp32
+	ld.lld ./test/task.o -L $$CDE_LIBRARY_PATH/riscv32 -lsysy -o ./test/task
+# 以 task$(TASK) 中的所有 .in 文件作为输入，运行程序
+	for file in `ls ./test/task$(TASK)/*.in`; do \
+		echo $$file; \
+		qemu-riscv32-static ./test/task < $$file > $$file.out; \
+	done
 
 -include $(DEPS)
