@@ -57,6 +57,19 @@ make task TASK=1
 
 其中，`TASK` 是指定的 task 序号。
 
+### 1.6 Tester
+
+在 `compiler` 目录下使用以下命令运行所有 tester（以 linux-amd64 架构为例）：
+
+```bash
+make task TASK=1
+../tester/quicksort/quicksort-linux-amd64 ./task.sh
+make task TASK=2
+../tester/matrix/matrix-linux-amd64 ./task.sh
+make task TASK=3
+../tester/advisor/advisor-linux-amd64 ./task.sh
+```
+
 # 二、调试代码
 
 RISCV输出字符`a\n`
