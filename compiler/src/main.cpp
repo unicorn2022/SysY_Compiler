@@ -1,4 +1,5 @@
 #include <cstring>
+#include <ctime>
 
 #include "front/front_main.hpp"
 #include "back/back_main.hpp"
@@ -16,7 +17,11 @@ void CopyFile(const char input[], const char output[]){
     fout.close();
 }
 
-int debug_cnt;
+void Delay(int ms){
+    clock_t start = clock();
+    while(clock() - start < ms);
+    printf("Delay %d ms\n", ms);
+}
 
 int main(int argc, const char *argv[]) {
     // 解析命令行参数. 测试脚本/评测平台要求你的编译器能接收如下参数:
@@ -30,8 +35,7 @@ int main(int argc, const char *argv[]) {
         front_main(input, output);
     } 
     else if (strcmp(mode, "-riscv") == 0) {
-        // for(int i = 0; i <= 1000000000; i++)
-        //     debug_cnt++;
+        // Delay(2000000);
         const char CFile[] = "./test/task.c";
         const char IRFile[] = "./test/task.koopa";
 

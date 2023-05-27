@@ -10,6 +10,7 @@
 using namespace std;
 
 #define cout fout
+const bool DEBUG = false;
 
 ofstream fout;
 
@@ -136,7 +137,7 @@ int32_t need_stack = 0;
 
 // 访问函数
 void Visit_Function(const koopa_raw_function_t &func) {
-    // printf("-----------Visit_Function---------------\n");
+    if(DEBUG) printf("-----------Visit_Function---------------\n");
 
     // 如果是函数声明, 则对应bbs.len为0, 应该跳过
     if(func->bbs.len == 0) return;
@@ -160,8 +161,11 @@ void Visit_Function(const koopa_raw_function_t &func) {
         need_stack += Get_Basic_Block_Need_Stack(reinterpret_cast<koopa_raw_basic_block_t>(ptr));
     }
     // 开辟栈空间, 保留ra的值到栈的最底部
-    cout << "\taddi sp, sp, -" << need_stack << "\n";
-    cout << "\tsw   ra, " << need_stack-4 << "(sp)\n";
+    cout << "\tli   t3, " << need_stack << "\n";
+    cout << "\tsub  sp, sp, t3\n";
+    // ra存到 sp + need_stack(t3) -4 中
+    cout << "\tadd  t3, t3, sp\n";
+    cout << "\tsw   ra, -4(t3)\n";
 
     // 访问当前函数的所有参数
     // koopa_raw_slice_t params, 需要通过Slice进行进一步划分
@@ -284,7 +288,7 @@ int32_t Get_Basic_Block_Need_Stack(const koopa_raw_basic_block_t &bbs){
 
 // 访问基本块
 void Visit_Basic_Block(const koopa_raw_basic_block_t &bb) {
-    printf("\n-----------Visit_Basic_Block, name = %s---------------\n", bb->name+1);
+    if(DEBUG) printf("\n-----------Visit_Basic_Block, name = %s---------------\n", bb->name+1);
     
     // 输出当前基本块的名成, 标记当前基本块的入口
     // 由于KoopaIR中基本块均为@name, 因此只需要输出name+1即可
@@ -313,7 +317,7 @@ std::map<koopa_raw_value_t, int32_t> inst_to_index;
 int32_t Visit_Inst(const koopa_raw_value_t &value) {
     if(inst_to_index.find(value) != inst_to_index.end()) return inst_to_index[value];
 
-    printf("Visit_Inst, kind = %s\n", KIND_TAG_TO_TYPE[value->kind.tag]);
+    if(DEBUG) printf("Visit_Inst, kind = %s\n", KIND_TAG_TO_TYPE[value->kind.tag]);
 
     // 根据指令类型判断后续需要如何访问
     const auto &kind = value->kind;
@@ -538,23 +542,34 @@ int32_t Visit_Inst_Load(const koopa_raw_load_t &load){
         cout << "\tla   t1, " << src->name+1 << "\n";
         cout << "\tlw   t0, 0(t1)\n";
     } else if(src->kind.tag == KOOPA_RVT_ALLOC){
-        // 局部变量的地址
-        cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+        // 局部变量的地址 sp + Vist_Inst(t3)
+        cout << "\tli   t3, " << Visit_Inst(src) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t0, 0(t3)\n";
+        // cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
     } else if(src->kind.tag == KOOPA_RVT_GET_PTR){
         // 指针指向的地址
-        cout << "\tlw   t1, " << Visit_Inst(src) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(src) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t1, 0(t3)\n";
+        // cout << "\tlw   t1, " << Visit_Inst(src) << "(sp)\n";
         cout << "\tlw   t0, 0(t1)\n";
     } else if(src->kind.tag == KOOPA_RVT_GET_ELEM_PTR){
         // 数组
-        cout << "\tlw   t1, " << Visit_Inst(src) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(src) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t1, 0(t3)\n";
+        // cout << "\tlw   t1, " << Visit_Inst(src) << "(sp)\n";
         cout << "\tlw   t0, 0(t1)\n";
     } else{
         printf("[Visit_Inst_Load] src->kind.tag = %d\n", src->kind.tag);
         assert(0);
     }
     
-    // 再将t0存入内存中
-    cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    // 再将t0存入内存 sp + usestack(t3) 中
+    cout << "\tli   t3, " << use_stack << "\n";
+    cout << "\tadd  t3, t3, sp\n";
+    cout << "\tsw   t0, 0(t3)\n";
     cout << "\n";
     use_stack += 4;
     return use_stack - 4;
@@ -576,24 +591,36 @@ int32_t Visit_Inst_Store(const koopa_raw_store_t &store){
         cout << "\tmv   t0, a" << Visit_Inst_Func_Arg_Ref(value->kind.data.func_arg_ref) << "\n"; 
     } else{
         // value在内存中, 将其lw到t0中
-        cout << "\tlw   t0, " << Visit_Inst(value) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(value) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t0, 0(t3)\n";
+        // cout << "\tlw   t0, " << Visit_Inst(value) << "(sp)\n";
     }
 
     // 将 t0 存到 dest 的位置
     if(dest->kind.tag == KOOPA_RVT_GLOBAL_ALLOC){
         // 全局变量的地址
-        cout << "\tla   t1, " << dest->name+1 << "\n";
-        cout << "\tsw   t0, 0(t1)\n";
+        cout << "\tla   t3, " << dest->name+1 << "\n";
+        cout << "\tsw   t0, 0(t3)\n";
     } else if(dest->kind.tag == KOOPA_RVT_ALLOC){
         // 局部变量的地址
-        cout << "\tsw   t0, " << Visit_Inst(dest) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(dest) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tsw   t0, 0(t3)\n";
+        // cout << "\tsw   t0, " << Visit_Inst(dest) << "(sp)\n";
     } else if(dest->kind.tag == KOOPA_RVT_GET_PTR){
         // 指针指向的地址
-        cout << "\tlw   t1, " << Visit_Inst(dest) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(dest) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t1, 0(t3)\n";
+        // cout << "\tlw   t1, " << Visit_Inst(dest) << "(sp)\n";
         cout << "\tsw   t0, 0(t1)\n";
     } else if(dest->kind.tag == KOOPA_RVT_GET_ELEM_PTR){
         // 数组
-        cout << "\tlw   t1, " << Visit_Inst(dest) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(dest) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t1, 0(t3)\n";
+        // cout << "\tlw   t1, " << Visit_Inst(dest) << "(sp)\n";
         cout << "\tsw   t0, 0(t1)\n";
     } else{
         printf("[Visit_Inst_Store] dest->kind.tag = %d\n", dest->kind.tag);
@@ -620,10 +647,15 @@ int32_t Visit_Inst_Get_Ptr(const koopa_raw_get_ptr_t &get_ptr){
         cout << "\tla   t0, " << src->name+1 << "\n";
     } else if(src->kind.tag == KOOPA_RVT_ALLOC){
         // 局部数组
-        cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
+        cout << "\tli   t3, " << Visit_Inst(src) << "\n";
+        cout << "\tadd  t0, t3, sp\n";
+        // cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
     } else{
         // 局部变量
-        cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(src) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t0, 0(t3)\n";
+        // cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
         // printf("[Visit_Inst_Elem_Ptr] src->kind.tag = %d", src->kind.tag);
         // assert(0);
     }
@@ -637,7 +669,10 @@ int32_t Visit_Inst_Get_Ptr(const koopa_raw_get_ptr_t &get_ptr){
         cout << "\tmv   t1, a" << Visit_Inst_Func_Arg_Ref(index->kind.data.func_arg_ref) << "\n"; 
     } else{
         // index 在内存中, 将其lw到t1中
-        cout << "\tlw   t1, " << Visit_Inst(index) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(index) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t1, 0(t3)\n";
+        // cout << "\tlw   t1, " << Visit_Inst(index) << "(sp)\n";
     }
     // index * len
     cout << "\tli   t2, " << len * 4 << "\n";
@@ -645,7 +680,10 @@ int32_t Visit_Inst_Get_Ptr(const koopa_raw_get_ptr_t &get_ptr){
     // get_ptr的结果为: src + index * len
     cout << "\tadd  t0, t0, t1\n";
     // 再将t0存入内存中
-    cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    cout << "\tli   t3, " << use_stack << "\n";
+    cout << "\tadd  t3, t3, sp\n";
+    cout << "\tsw   t0, 0(t3)\n";
+    // cout << "\tsw   t0, " << use_stack << "(sp)\n";
     cout << "\n";
     use_stack += 4;
     return use_stack - 4;
@@ -664,21 +702,47 @@ int32_t Visit_Inst_Elem_Ptr(const koopa_raw_get_elem_ptr_t &get_elem_ptr){
         cout << "\tla   t0, " << src->name+1 << "\n";
     } else if(src->kind.tag == KOOPA_RVT_ALLOC){
         // 局部数组
-        cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
-    } else{
-        printf("[Visit_Inst_Elem_Ptr] src->kind.tag = %d", src->kind.tag);
+        cout << "\tli   t3, " << Visit_Inst(src) << "\n";
+        cout << "\tadd  t0, t3, sp\n";
+        // cout << "\taddi t0, sp, " << Visit_Inst(src) << "\n";
+    } else if(src->kind.tag == KOOPA_RVT_GET_PTR){
+        // 数组指针
+        cout << "\tli   t3, " << Visit_Inst(src) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t0, 0(t3)\n";
+        // cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+    } else if(src->kind.tag == KOOPA_RVT_GET_ELEM_PTR){
+        // 多维数组
+        cout << "\tli   t3, " << Visit_Inst(src) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t0, 0(t3)\n";
+        // cout << "\tlw   t0, " << Visit_Inst(src) << "(sp)\n";
+    }  else{
+        printf("[Visit_Inst_Elem_Ptr] src->kind.tag = %d\n", src->kind.tag);
         assert(0);
     }
 
-
     // 计算 get_elemptr 的偏移量
-    cout << "\tli   t1, " << Visit_Inst(index) << "\n";
+    if (index->kind.tag == KOOPA_RVT_INTEGER){
+        // index是常数
+        cout << "\tli   t1, " << Visit_Inst(index) << "\n";
+    } else{
+        // index是局部变量
+        cout << "\tli   t3, " << Visit_Inst(index) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t1, 0(t3)\n";
+        // cout << "\tlw   t1, " << Visit_Inst(index) << "(sp)\n";
+    }
+    // 计算数组单个元素的长度
     cout << "\tli   t2, " << Get_Array_Len(src->ty) * 4 << "\n";
     cout << "\tmul  t1, t1, t2\n";
     // 计算 get_elemptr 的结果, 是一个指针
     cout << "\tadd  t0, t0, t1\n";
     // 再将t0存入内存中
-    cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    cout << "\tli   t3, " << use_stack << "\n";
+    cout << "\tadd  t3, t3, sp\n";
+    cout << "\tsw   t0, 0(t3)\n";
+    // cout << "\tsw   t0, " << use_stack << "(sp)\n";
     cout << "\n";
     use_stack += 4;
     return use_stack - 4;
@@ -701,7 +765,10 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
         cout << "\tmv   t0, a" << Visit_Inst_Func_Arg_Ref(lhs->kind.data.func_arg_ref) << "\n";
     } else{
         // 不是整数指令, 则变量一定在内存中
-        cout << "\tlw   t0, " << Visit_Inst(lhs) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(lhs) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t0, 0(t3)\n";
+        // cout << "\tlw   t0, " << Visit_Inst(lhs) << "(sp)\n";
     }
     // 将rhs的值保存在t1中
     if(rhs->kind.tag == KOOPA_RVT_INTEGER){
@@ -712,7 +779,10 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
         cout << "\tmv   t1, a" << Visit_Inst_Func_Arg_Ref(rhs->kind.data.func_arg_ref) << "\n";
     } else{
         // 不是整数指令, 则变量一定在内存中
-        cout << "\tlw   t1, " << Visit_Inst(rhs) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(rhs) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t1, 0(t3)\n";
+        // cout << "\tlw   t1, " << Visit_Inst(rhs) << "(sp)\n";
     }
 
 
@@ -818,7 +888,10 @@ int32_t Visit_Inst_Binary(const koopa_raw_binary_t &binary){
     }
 
     // 再将t0存入内存中
-    cout << "\tsw   t0, " << use_stack << "(sp)\n";
+    cout << "\tli   t3, " << use_stack << "\n";
+    cout << "\tadd  t3, t3, sp\n";
+    cout << "\tsw   t0, 0(t3)\n";
+    // cout << "\tsw   t0, " << use_stack << "(sp)\n";
     cout << "\n";
     use_stack += 4;
     return use_stack - 4;
@@ -843,7 +916,10 @@ int32_t Visit_Inst_Branch(const koopa_raw_branch_t &branch){
         cout << "\tmv   t0, a" << Visit_Inst_Func_Arg_Ref(cond->kind.data.func_arg_ref) << "\n"; 
     } else{
         // 不是整数指令, 则变量一定在内存中
-        cout << "\tlw   t0, " << Visit_Inst(cond) << "(sp)\n";
+        cout << "\tli   t3, " << Visit_Inst(cond) << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tlw   t0, 0(t3)\n";
+        // cout << "\tlw   t0, " << Visit_Inst(cond) << "(sp)\n";
     }
 
     // 输出条件跳转语句
@@ -903,7 +979,10 @@ int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
                 cout << "\tmv   a" << i <<  ", a" << index << "\n"; 
             } else{
                 // 其他情况, value一定在内存中
-                cout << "\tlw   a" << i <<  ", " << Visit_Inst(value) + count_arg*4 << "(sp)\n";
+                cout << "\tli   t3, " << Visit_Inst(value) + count_arg*4 << "\n";
+                cout << "\tadd  t3, t3, sp\n";
+                cout << "\tlw   a" << i <<  ", 0(t3)\n";
+                // cout << "\tlw   a" << i <<  ", " << Visit_Inst(value) + count_arg*4 << "(sp)\n";
             }
         }
         // 当前args的类型为其他情况
@@ -921,7 +1000,10 @@ int32_t Visit_Inst_Call(const koopa_raw_call_t &call){
     
     // 返回值为int32时, 需要保留返回值到栈中
     if(ret_type == KOOPA_RTT_INT32){
-        cout << "\tsw   a0, " << use_stack << "(sp)\n";
+        cout << "\tli   t3, " << use_stack << "\n";
+        cout << "\tadd  t3, t3, sp\n";
+        cout << "\tsw   a0, 0(t3)\n";
+        // cout << "\tsw   a0, " << use_stack << "(sp)\n";
         use_stack += 4; 
     }
 
@@ -950,14 +1032,21 @@ int32_t Visit_Inst_Return(const koopa_raw_return_t &ret){
             cout << "\tmv   a0, a" << Visit_Inst_Func_Arg_Ref(ret_value->kind.data.func_arg_ref) << "\n"; 
         } else{
             // 其他情况
-            cout << "\tlw   a0, " << Visit_Inst(ret_value) << "(sp)\n";
+            cout << "\tli   t3, " << Visit_Inst(ret_value) << "\n";
+            cout << "\tadd  t3, t3, sp\n";
+            cout << "\tlw   a0, 0(t3)\n";
+            // cout << "\tlw   a0, " << Visit_Inst(ret_value) << "(sp)\n";
         }
     }
 
     // 取出返回地址
-    cout << "\tlw   ra, " << need_stack-4 << "(sp)\n";
+    cout << "\tli   t3, " << need_stack-4 << "\n";
+    cout << "\tadd  t3, t3, sp\n";
+    cout << "\tlw   ra, 0(t3)\n";
+    // cout << "\tlw   ra, " << need_stack-4 << "(sp)\n";
     // 恢复栈空间
-    cout << "\taddi sp, sp, " << need_stack << "\n";
+    cout << "\tli   t0, " << need_stack << "\n";
+    cout << "\tadd  sp, sp, t0\n";
     // 返回
     cout << "\tret\n";
     cout << "\n";
