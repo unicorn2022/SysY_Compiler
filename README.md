@@ -70,6 +70,8 @@ make task TASK=3
 ../tester/advisor/advisor-linux-amd64 ./task.sh
 ```
 
+**注意：task.sh的格式必须手动改为LF**
+
 # 二、调试代码
 
 RISCV输出字符`a\n`
