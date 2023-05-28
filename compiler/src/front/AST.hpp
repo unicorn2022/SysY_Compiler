@@ -18,8 +18,8 @@ public:
             } var_val;
             struct FuncVal {
                 int func_type; // 0 表示 void，1 表示 int
-                int fParamNum; // 参数个数
-                bool *fParamIsArray; // 参数是否为数组（指针）
+                int fParamNum; // DIRTY 参数个数
+                bool *fParamIsArray; // DIRTY 参数是否为数组（指针）
             } func_val;
         } val;
     };
@@ -285,8 +285,6 @@ private:
     // 第一个变量名应该生成为 %ident_0，第二个应该为 %ident_1，以此类推
     std::map<std::string, int> varSymbolCount;
 };
-
-// extern NestedSymbolTable symbolTable;
 
 /**************** AST ****************/
 
